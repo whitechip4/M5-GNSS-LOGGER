@@ -1,8 +1,12 @@
+// refelence: https://github.com/m5stack/M5Module-GNSS
+
 #include <Arduino.h>
 #include <TinyGPSPlus.h>  //for M5 GNSS module
 #include <M5Core2.h>
 
 TinyGPSPlus gps;  
+
+static void smartDelay(unsigned long ms);
 
 void setup() {
   M5.begin(true,true,true,true);
@@ -24,12 +28,18 @@ void loop() {
   M5.Lcd.printf("hdop:%f\r\n, valid:%1d\r\n",gps.hdop.hdop(),gps.hdop.isValid());
   M5.Lcd.printf("lat:%f\r\n, valid:%1d\r\n",gps.location.lat(),gps.location.isValid());
   M5.Lcd.printf("lng:%f\r\n, valid:%1d\r\n",gps.location.lng(),gps.location.isValid());
+  M5.Lcd.printf("alt:%f\r\n, valid:%1d\r\n",gps.altitude.meters(),gps.altitude.isValid());
   M5.Lcd.printf("date:%02d%02d%02d\r\n, valid:%1d\r\n",gps.date.year(),gps.date.month(),gps.date.day(),gps.location.isValid());
   M5.Lcd.printf("time:%02d%02d%02d\r\n, valid:%1d\r\n",gps.time.hour(),gps.time.minute(),gps.time.second(),gps.location.isValid());
 
-
-  delay(1000);
+  smartDelay(1000);
   M5.Lcd.clear(0x000000);
   M5.Lcd.setCursor(0,0);
 }
 
+static void smartDelay(unsigned long ms) {
+    unsigned long start = millis();
+    do {
+        while (Serial2.available()) gps.encode(Serial2.read());
+    } while (millis() - start < ms);
+}

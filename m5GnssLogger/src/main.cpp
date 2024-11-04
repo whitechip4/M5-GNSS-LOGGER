@@ -65,7 +65,7 @@ void loop()
   float batVoltage = axp192.GetBatVoltage();
 
   // test print
-  if (isGpsOk || isSdCardOk || batVoltage > 3.6f)
+  if (isGpsOk && isSdCardOk && batVoltage > 3.6f)
   {
     M5.Lcd.printf("Status : ");
     M5.Lcd.setTextColor(M5.Lcd.color565(0, 255, 0));

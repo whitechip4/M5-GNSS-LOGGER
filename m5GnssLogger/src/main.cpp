@@ -96,10 +96,10 @@ void loop()
   M5.Lcd.printf("\r\n");
   M5.Lcd.setTextFont(2);
 
-  M5.Lcd.printf("val:%d\r\n", gps.satellites.value());
+  M5.Lcd.printf("val:%d, valid:%1d\r\n", gps.satellites.value(),gps.satellites.isValid());
   M5.Lcd.printf("hdop:%f\r\n", gps.hdop.hdop());
-  M5.Lcd.printf("lat:%f\r\n", gps.location.lat());
-  M5.Lcd.printf("lng:%f\r\n", gps.location.lng());
+  M5.Lcd.printf("lat:%lf\r\n", gps.location.lat());
+  M5.Lcd.printf("lng:%lf\r\n", gps.location.lng());
   M5.Lcd.printf("alt:%f\r\n", gps.altitude.meters());
   M5.Lcd.printf("date:%02d/%02d/%02d_%02d:%02d:%02d\r\n", gps.date.year(), gps.date.month(), gps.date.day(), gps.time.hour(), gps.time.minute(), gps.time.second());
 
@@ -136,26 +136,43 @@ static void gpsDataWriteToSd(TinyGPSPlus _gps)
   char datetimeUtc[20];
   sprintf(datetimeUtc, "%02d/%02d/%02d,%02d:%02d:%02d", _gps.date.year(), _gps.date.month(), _gps.date.day(), _gps.time.hour(), _gps.time.minute(), _gps.time.second());
   char lineStr[128];
-  sprintf(lineStr, "%s,%f,%f,%.1f,%.0f,%d,%2f", datetimeUtc, _gps.location.lat(), _gps.location.lng(), _gps.altitude.meters(),gps.speed.kmph() ,_gps.satellites.value(), _gps.hdop.hdop());
+  sprintf(lineStr, "%s,%lf,%lf,%.1f,%.0f,%d,%2f", datetimeUtc, _gps.location.lat(), _gps.location.lng(), _gps.altitude.meters(),gps.speed.kmph() ,_gps.satellites.value(), _gps.hdop.hdop());
 
   file = SD.open(fileName, FILE_APPEND);
   file.println(lineStr);
   file.close();
 }
 
-// TODO add anti-chattering
+// TODO add anti-chattering, anti_unstable_position method
 static bool isGpsReady(TinyGPSPlus _gps)
 {
-  if (!_gps.hdop.isValid())
-    return false;
-  if (_gps.hdop.hdop() > 50)
-    return false;
+  static uint32_t recover_buffer_time_anchor = millis();
 
-  if (fabs(_gps.location.lat()) < 1.0f)
+  if (!_gps.hdop.isValid()){
+    recover_buffer_time_anchor = millis();
     return false;
+  }
+  if (_gps.hdop.hdop() > 3.0f){ //tmp
+    recover_buffer_time_anchor = millis();
+    return false;
+  }
+  if (_gps.satellites.value() < 8){  //tmp
+    recover_buffer_time_anchor = millis();
+    return false;
+  }
+  if (fabs(_gps.location.lat()) < 0.001f){
+    recover_buffer_time_anchor = millis();
+    return false;
+  }
+  if (fabs(_gps.location.lng()) < 0.001f){
+    recover_buffer_time_anchor = millis();
+    return false;
+  }
 
-  if (fabs(_gps.location.lng()) < 1.0f)
+  // position info is unstable when recover
+  if( millis() - recover_buffer_time_anchor < 10000){
     return false;
+  }
 
   return true;
 }

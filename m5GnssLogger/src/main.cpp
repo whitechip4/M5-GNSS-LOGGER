@@ -13,6 +13,8 @@ char fileName[32];
 
 AXP192 axp192;
 
+uint32_t tickMs;
+
 static void smartDelay(unsigned long);
 static bool isGpsReady(TinyGPSPlus);
 static void gpsDataWriteToSd(TinyGPSPlus);
@@ -40,18 +42,18 @@ void setup()
   M5.Lcd.clear(0x000000);
   M5.Lcd.setCursor(0, 0);
 
-  sprintf(fileName, "/gpx_data_%02d%02d%02d%02d%02d%02d.csv", gps.date.year(), gps.date.month(), gps.date.day(), gps.time.hour(), gps.time.minute(), gps.time.second());
+  sprintf(fileName, "/gpx_data_%02d%02d%02d_%02d%02d%02d.csv", gps.date.year(), gps.date.month(), gps.date.day(), gps.time.hour(), gps.time.minute(), gps.time.second());
 
   // initial write
-
   if (!isSDCardReady())
   {
     M5.Lcd.setTextColor(M5.Lcd.color565(255, 0, 0));
     M5.Lcd.printf("Error : SDCardNotFound");
     delay(10000);
+    ESP.restart();
   }
   char lineStr[128];
-  sprintf(lineStr, "date,time,lat,lng,alt");
+  sprintf(lineStr, "date,time,lat,lng,alt,spd,val,hdop");
   file = SD.open(fileName, FILE_APPEND);
   file.println(lineStr);
   file.close();
@@ -79,13 +81,29 @@ void loop()
   }
   M5.Lcd.setTextColor(M5.Lcd.color565(255, 255, 255));
 
-  M5.Lcd.printf("val:%d\r\n, valid:%1d\r\n", gps.satellites.value(), gps.satellites.isValid());
-  M5.Lcd.printf("hdop:%f\r\n, valid:%1d\r\n", gps.hdop.hdop(), gps.hdop.isValid());
-  M5.Lcd.printf("lat:%f\r\n, valid:%1d\r\n", gps.location.lat(), gps.location.isValid());
-  M5.Lcd.printf("lng:%f\r\n, valid:%1d\r\n", gps.location.lng(), gps.location.isValid());
-  M5.Lcd.printf("alt:%f\r\n, valid:%1d\r\n", gps.altitude.meters(), gps.altitude.isValid());
-  M5.Lcd.printf("date:%02d%02d%02d_%02d%02d%02d\r\n, valid:%1d\r\n", gps.date.year(), gps.date.month(), gps.date.day(), gps.time.hour(), gps.time.minute(), gps.time.second(), gps.date.isValid());
-  M5.Lcd.printf("BATT: %4f\r\n", batVoltage);
+  // M5.Lcd.printf("val:%d\r\n, valid:%1d\r\n", gps.satellites.value(), gps.satellites.isValid());
+  // M5.Lcd.printf("hdop:%f\r\n, valid:%1d\r\n", gps.hdop.hdop(), gps.hdop.isValid());
+  // M5.Lcd.printf("lat:%f\r\n, valid:%1d\r\n", gps.location.lat(), gps.location.isValid());
+  // M5.Lcd.printf("lng:%f\r\n, valid:%1d\r\n", gps.location.lng(), gps.location.isValid());
+  // M5.Lcd.printf("alt:%f\r\n, valid:%1d\r\n", gps.altitude.meters(), gps.altitude.isValid());
+  // M5.Lcd.printf("date:%02d%02d%02d_%02d%02d%02d\r\n, valid:%1d\r\n", gps.date.year(), gps.date.month(), gps.date.day(), gps.time.hour(), gps.time.minute(), gps.time.second(), gps.date.isValid());
+
+  M5.Lcd.setTextFont(7);
+  M5.Lcd.printf("%03.0f ", gps.speed.kmph());
+  M5.Lcd.setTextFont(2);
+  M5.Lcd.printf("km/h");
+  M5.Lcd.setTextFont(7);
+  M5.Lcd.printf("\r\n");
+  M5.Lcd.setTextFont(2);
+
+  M5.Lcd.printf("val:%d\r\n", gps.satellites.value());
+  M5.Lcd.printf("hdop:%f\r\n", gps.hdop.hdop());
+  M5.Lcd.printf("lat:%f\r\n", gps.location.lat());
+  M5.Lcd.printf("lng:%f\r\n", gps.location.lng());
+  M5.Lcd.printf("alt:%f\r\n", gps.altitude.meters());
+  M5.Lcd.printf("date:%02d/%02d/%02d_%02d:%02d:%02d\r\n", gps.date.year(), gps.date.month(), gps.date.day(), gps.time.hour(), gps.time.minute(), gps.time.second());
+
+  M5.Lcd.printf("BATT: %.4fV\r\n", batVoltage);
 
   gpsDataWriteToSd(gps);
 
@@ -94,7 +112,6 @@ void loop()
   M5.Lcd.setCursor(0, 0);
 }
 // !main
-
 
 static void smartDelay(unsigned long ms)
 {
@@ -119,14 +136,14 @@ static void gpsDataWriteToSd(TinyGPSPlus _gps)
   char datetimeUtc[20];
   sprintf(datetimeUtc, "%02d/%02d/%02d,%02d:%02d:%02d", _gps.date.year(), _gps.date.month(), _gps.date.day(), _gps.time.hour(), _gps.time.minute(), _gps.time.second());
   char lineStr[128];
-  sprintf(lineStr, "%s,%f,%f,%.1f", datetimeUtc, _gps.location.lat(), _gps.location.lng(), _gps.altitude.meters());
+  sprintf(lineStr, "%s,%f,%f,%.1f,%.0f,%d,%2f", datetimeUtc, _gps.location.lat(), _gps.location.lng(), _gps.altitude.meters(),gps.speed.kmph() ,_gps.satellites.value(), _gps.hdop.hdop());
 
   file = SD.open(fileName, FILE_APPEND);
   file.println(lineStr);
   file.close();
 }
 
-//TODO add anti-chattering 
+// TODO add anti-chattering
 static bool isGpsReady(TinyGPSPlus _gps)
 {
   if (!_gps.hdop.isValid())

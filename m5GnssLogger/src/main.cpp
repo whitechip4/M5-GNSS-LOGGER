@@ -116,7 +116,7 @@ void loop()
   if (!(millis() % 100))
   {
     M5.update();
-    myGNSS.checkUblox(); // これここでいいのか…？
+    myGNSS.checkUblox(); // read data from serial.
 
     float batVoltage = axp192.GetBatVoltage();
     bool isGpsOk = isGpsValid();

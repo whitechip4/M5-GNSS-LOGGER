@@ -1,48 +1,97 @@
-// refelence: https://github.com/m5stack/M5Module-GNSS
-
 #include <Arduino.h>
-#include <TinyGPSPlus.h> //for M5 GNSS module
 #include <M5Core2.h>
 #include <AXP192.h>
+#include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 
-TinyGPSPlus gps;
-bool gpsValid = false;
+typedef struct
+{
+
+  uint8_t siv; // num of satellite
+  double lat;
+  double lng;
+  double alt; // m
+  float vel;  // km/s
+
+  bool dateValid;
+  uint8_t year;
+  uint8_t month;
+  uint8_t day;
+
+  bool timeValid;
+  uint8_t hour;
+  uint8_t minute;
+  uint8_t second;
+
+  uint8_t fixType; // 0=no fix, 1=dead reckoning, 2=2D, 3=3D, 4=GNSS, 5=Time fix
+  uint8_t rtk;     // 0=No solution, 1=Float solution, 2=Fixed solution
+  uint32_t accuracy;
+  float hdop;
+
+} GNSS_DATA;
+
+SFE_UBLOX_GNSS myGNSS;
 
 File file;
-char fileName[32];
+char fileName[64];
 
 AXP192 axp192;
-
 uint32_t tickMs;
 
-static void smartDelay(unsigned long);
-static bool isGpsReady(TinyGPSPlus);
-static void gpsDataWriteToSd(TinyGPSPlus);
+static bool isGpsValid();
+static void gnssDataWriteToSd();
 static bool isSDCardReady();
+static void getGnssData();
+
+GNSS_DATA gnssData{
+  .siv = 0,
+  .lat = 0.0,
+  .lng = 0.0,
+  .alt = 0.0,
+  .vel = 0.0f,
+
+  .dateValid = false,
+  .year = 0,
+  .month = 0,
+  .day = 0,
+
+  .timeValid = false,
+  .hour = 0,
+  .minute = 0,
+  .second = 0,
+
+  .fixType = 0,
+  .rtk = 0,
+  .accuracy = 0,
+  .hdop = 99.0f,
+};
 
 void setup()
 {
   M5.begin(true, true, true, true);
   M5.Lcd.setTextFont(2);
-  // Serial.begin(115200);
-  Serial2.begin(38400, SERIAL_8N1, 13, 14); // for GPS
+  Serial2.begin(38400, SERIAL_8N1, 13, 14); // for NEO_M9N
 
-  bool gpsReady = false;
-  while (!gpsReady)
+  if (!myGNSS.begin(Serial2))
   {
-    M5.Lcd.clear(0x000000);
-    M5.Lcd.setCursor(0, 0);
-    M5.Lcd.printf("Waiting for GNSS ready.....");
-    M5.Lcd.printf("val:%d\r\n, valid:%1d\r\n", gps.satellites.value(), gps.satellites.isValid());
-
-    if (gps.satellites.isValid() && gps.date.isValid())
-      gpsReady = true;
-    smartDelay(1000);
+    M5.Lcd.print("u-blox GNSS module not detected");
+    delay(5000);
+    ESP.restart();
   }
+  myGNSS.setUART1Output(COM_TYPE_UBX); // ubx may high accuracy...?
+  uint8_t initialTimeSecond = 0;
+
+  // waiting for signal be stable
+  do
+  {
+    myGNSS.checkUblox();
+    M5.Lcd.print("Waiting Time Signal...");
+    getGnssData();
+  } while (!(gnssData.timeValid && gnssData.dateValid && (gnssData.second != 0) && (gnssData.day != 0))); // value check
+
   M5.Lcd.clear(0x000000);
   M5.Lcd.setCursor(0, 0);
 
-  sprintf(fileName, "/gpx_data_%02d%02d%02d_%02d%02d%02d.csv", gps.date.year(), gps.date.month(), gps.date.day(), gps.time.hour(), gps.time.minute(), gps.time.second());
+  sprintf(fileName, "/gnss_csv_data_%04d%02d%02d_%02d%02d%02d.csv", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
 
   // initial write
   if (!isSDCardReady())
@@ -52,7 +101,7 @@ void setup()
     delay(10000);
     ESP.restart();
   }
-  char lineStr[128];
+  char lineStr[64];
   sprintf(lineStr, "date,time,lat,lng,alt,spd,val,hdop");
   file = SD.open(fileName, FILE_APPEND);
   file.println(lineStr);
@@ -61,82 +110,101 @@ void setup()
 
 void loop()
 {
-  M5.update();
-  bool isGpsOk = isGpsReady(gps);
-  bool isSdCardOk = isSDCardReady();
-  float batVoltage = axp192.GetBatVoltage();
+  static uint8_t preSecond = 0;
 
-  // test print
-  if (isGpsOk && isSdCardOk && batVoltage > 3.6f)
+  // 0.1msec process
+  if (!(millis() % 100))
   {
-    M5.Lcd.printf("Status : ");
-    M5.Lcd.setTextColor(M5.Lcd.color565(0, 255, 0));
-    M5.Lcd.printf("Recording\r\n");
+    M5.update();
+    myGNSS.checkUblox(); // これここでいいのか…？
+
+    float batVoltage = axp192.GetBatVoltage();
+    bool isGpsOk = isGpsValid();
+    bool isSdCardOk = isSDCardReady();
+
+    getGnssData(); // get data and set to gnssData.
+
+    // Date update -> write and display
+    if (gnssData.second != preSecond)
+    {
+      preSecond = gnssData.second;
+
+      gnssDataWriteToSd();
+
+      M5.Lcd.fillScreen(BLACK);   // 画面をクリア
+      M5.Lcd.setTextColor(WHITE); // テキストカラーを白に設定
+      M5.Lcd.setTextSize(1);      // テキストサイズを設定
+      M5.Lcd.setCursor(0, 0);
+
+      if (isGpsOk && isSdCardOk && batVoltage > 3.6f)
+      {
+        M5.Lcd.printf("Status : ");
+        M5.Lcd.setTextColor(M5.Lcd.color565(0, 255, 0));
+        M5.Lcd.printf("Recording\r\n");
+      }
+      else
+      {
+        M5.Lcd.printf("Status : ");
+        M5.Lcd.setTextColor(M5.Lcd.color565(255, 0, 0));
+        M5.Lcd.printf("Stop\r\n");
+      }
+      M5.Lcd.setTextColor(M5.Lcd.color565(255, 255, 255));
+
+      // display
+      M5.Lcd.printf("Satellites: %d\n", gnssData.siv);
+      M5.Lcd.printf("hdop: %.2f\n", gnssData.hdop);
+      M5.Lcd.printf("fixType: %d\n", gnssData.fixType);
+      M5.Lcd.printf("rtk: %d\n", gnssData.rtk);
+      M5.Lcd.printf("accuracy: %d\n", gnssData.accuracy);
+
+      M5.Lcd.printf("Lat: %.6f\n", gnssData.lat);
+      M5.Lcd.printf("Lon: %.6f\n", gnssData.lng);
+      M5.Lcd.printf("Alt: %.6f\n", gnssData.alt);
+      M5.Lcd.printf("Vel: %.1f\n", gnssData.vel);
+
+      M5.Lcd.printf("DT: %04d/%02d/%02d_%02d%02d%02d\n", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
+      M5.Lcd.printf("BAT: %.2f\n", batVoltage);
+    }
   }
-  else
-  {
-    M5.Lcd.printf("Status : ");
-    M5.Lcd.setTextColor(M5.Lcd.color565(255, 0, 0));
-    M5.Lcd.printf("Stop\r\n");
-  }
-  M5.Lcd.setTextColor(M5.Lcd.color565(255, 255, 255));
-
-  // M5.Lcd.printf("val:%d\r\n, valid:%1d\r\n", gps.satellites.value(), gps.satellites.isValid());
-  // M5.Lcd.printf("hdop:%f\r\n, valid:%1d\r\n", gps.hdop.hdop(), gps.hdop.isValid());
-  // M5.Lcd.printf("lat:%f\r\n, valid:%1d\r\n", gps.location.lat(), gps.location.isValid());
-  // M5.Lcd.printf("lng:%f\r\n, valid:%1d\r\n", gps.location.lng(), gps.location.isValid());
-  // M5.Lcd.printf("alt:%f\r\n, valid:%1d\r\n", gps.altitude.meters(), gps.altitude.isValid());
-  // M5.Lcd.printf("date:%02d%02d%02d_%02d%02d%02d\r\n, valid:%1d\r\n", gps.date.year(), gps.date.month(), gps.date.day(), gps.time.hour(), gps.time.minute(), gps.time.second(), gps.date.isValid());
-
-  M5.Lcd.setTextFont(7);
-  M5.Lcd.printf("%03.0f ", gps.speed.kmph());
-  M5.Lcd.setTextFont(2);
-  M5.Lcd.printf("km/h");
-  M5.Lcd.setTextFont(7);
-  M5.Lcd.printf("\r\n");
-  M5.Lcd.setTextFont(2);
-
-  M5.Lcd.printf("val:%d, valid:%1d\r\n", gps.satellites.value(),gps.satellites.isValid());
-  M5.Lcd.printf("hdop:%f\r\n", gps.hdop.hdop());
-  M5.Lcd.printf("lat:%lf\r\n", gps.location.lat());
-  M5.Lcd.printf("lng:%lf\r\n", gps.location.lng());
-  M5.Lcd.printf("alt:%f\r\n", gps.altitude.meters());
-  M5.Lcd.printf("date:%02d/%02d/%02d_%02d:%02d:%02d\r\n", gps.date.year(), gps.date.month(), gps.date.day(), gps.time.hour(), gps.time.minute(), gps.time.second());
-
-  M5.Lcd.printf("BATT: %.4fV\r\n", batVoltage);
-
-  gpsDataWriteToSd(gps);
-
-  smartDelay(1000);
-  M5.Lcd.clear(0x000000);
-  M5.Lcd.setCursor(0, 0);
 }
 // !main
 
-static void smartDelay(unsigned long ms)
+static void getGnssData()
 {
-  unsigned long start = millis();
-  do
-  {
-    while (Serial2.available())
-      gps.encode(Serial2.read());
-  } while (millis() - start < ms);
+  gnssData.siv = myGNSS.getSIV(1);
+  gnssData.lat = (double)myGNSS.getLatitude(1) * 0.0000001;
+  gnssData.lng = (double)myGNSS.getLongitude(1) * 0.0000001;
+  gnssData.alt = (double)myGNSS.getAltitude(1) * 0.001;
+
+  gnssData.dateValid = myGNSS.getDateValid();
+  gnssData.year = myGNSS.getYear(1);
+  gnssData.month = myGNSS.getMonth(1);
+  gnssData.day = myGNSS.getDay(1);
+
+  gnssData.timeValid = myGNSS.getTimeValid();
+  gnssData.hour = myGNSS.getHour(1);
+  gnssData.minute = myGNSS.getMinute(1);
+  gnssData.second = myGNSS.getSecond(1);
+
+  gnssData.fixType = myGNSS.getFixType(1);
+  gnssData.rtk = myGNSS.getCarrierSolutionType(1);
+  gnssData.accuracy = myGNSS.getPositionAccuracy(1);
+  gnssData.hdop = myGNSS.getHorizontalDOP(1) * 0.01f;
+  gnssData.vel = myGNSS.getGroundSpeed(1) * 0.0036f; // mm/s -> km/h
 }
 
-static void gpsDataWriteToSd(TinyGPSPlus _gps)
+static void gnssDataWriteToSd()
 {
 
-  if (!isGpsReady(_gps))
+  if (!isGpsValid() || !isSDCardReady())
   {
     return;
   }
 
-  // cardcheck
-
-  char datetimeUtc[20];
-  sprintf(datetimeUtc, "%02d/%02d/%02d,%02d:%02d:%02d", _gps.date.year(), _gps.date.month(), _gps.date.day(), _gps.time.hour(), _gps.time.minute(), _gps.time.second());
+  char datetimeUtc[32]; // TODO: UTC->JST convert
+  sprintf(datetimeUtc, "%04d/%02d/%02d,%02d:%02d:%02d", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
   char lineStr[128];
-  sprintf(lineStr, "%s,%lf,%lf,%.1f,%.0f,%d,%2f", datetimeUtc, _gps.location.lat(), _gps.location.lng(), _gps.altitude.meters(),gps.speed.kmph() ,_gps.satellites.value(), _gps.hdop.hdop());
+  sprintf(lineStr, "%s,%lf,%lf,%.1f,%.0f,%d,%2f", datetimeUtc, gnssData.lat, gnssData.lng, gnssData.alt, gnssData.vel, gnssData.siv, gnssData.hdop);
 
   file = SD.open(fileName, FILE_APPEND);
   file.println(lineStr);
@@ -144,33 +212,34 @@ static void gpsDataWriteToSd(TinyGPSPlus _gps)
 }
 
 // TODO add anti-chattering, anti_unstable_position method
-static bool isGpsReady(TinyGPSPlus _gps)
+static bool isGpsValid()
 {
   static uint32_t recover_buffer_time_anchor = millis();
 
-  if (!_gps.hdop.isValid()){
+  if (gnssData.hdop > 2.5f)
+  { // tmp
     recover_buffer_time_anchor = millis();
     return false;
   }
-  if (_gps.hdop.hdop() > 3.0f){ //tmp
+  if (gnssData.siv < 10)
+  { // tmp
     recover_buffer_time_anchor = millis();
     return false;
   }
-  if (_gps.satellites.value() < 8){  //tmp
+  if (fabs(gnssData.lat) < 0.001f)
+  {
     recover_buffer_time_anchor = millis();
     return false;
   }
-  if (fabs(_gps.location.lat()) < 0.001f){
-    recover_buffer_time_anchor = millis();
-    return false;
-  }
-  if (fabs(_gps.location.lng()) < 0.001f){
+  if (fabs(gnssData.lng) < 0.001f)
+  {
     recover_buffer_time_anchor = millis();
     return false;
   }
 
   // position info is unstable when recover
-  if( millis() - recover_buffer_time_anchor < 10000){
+  if (millis() - recover_buffer_time_anchor < 5000)
+  {
     return false;
   }
 

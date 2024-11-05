@@ -1,0 +1,27 @@
+{
+	"folders": [
+		{
+			"path": "../.."
+		},
+		{
+			"name": "m5GnssLogger",
+			"path": ".."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"*.ejs": "html",
+			"optional": "cpp",
+			"system_error": "cpp",
+			"cmath": "cpp",
+			"random": "cpp",
+			"cstdio": "cpp",
+			"xlocnum": "cpp",
+			"*.tcc": "cpp",
+			"algorithm": "cpp",
+			"functional": "cpp",
+			"utility": "cpp",
+			"xlocale": "cpp"
+		}
+	}
+}

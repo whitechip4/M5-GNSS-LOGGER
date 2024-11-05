@@ -5,7 +5,6 @@
 
 typedef struct
 {
-
   uint8_t siv; // num of satellite
   double lat;
   double lng;
@@ -13,7 +12,7 @@ typedef struct
   float vel;  // km/s
 
   bool dateValid;
-  uint8_t year;
+  uint16_t year;
   uint8_t month;
   uint8_t day;
 
@@ -29,18 +28,12 @@ typedef struct
 
 } GNSS_DATA;
 
+// global
 SFE_UBLOX_GNSS myGNSS;
+AXP192 axp192;
 
 File file;
 char fileName[64];
-
-AXP192 axp192;
-uint32_t tickMs;
-
-static bool isGpsValid();
-static void gnssDataWriteToSd();
-static bool isSDCardReady();
-static void getGnssData();
 
 GNSS_DATA gnssData{
   .siv = 0,
@@ -65,6 +58,13 @@ GNSS_DATA gnssData{
   .hdop = 99.0f,
 };
 
+// function prototype
+static bool isGpsValid();
+static void gnssDataWriteToSd();
+static bool isSDCardReady();
+static void getGnssData();
+
+// main
 void setup()
 {
   M5.begin(true, true, true, true);
@@ -93,7 +93,7 @@ void setup()
 
   sprintf(fileName, "/gnss_csv_data_%04d%02d%02d_%02d%02d%02d.csv", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
 
-  // initial write
+  // initial write (header)
   if (!isSDCardReady())
   {
     M5.Lcd.setTextColor(M5.Lcd.color565(255, 0, 0));
@@ -169,6 +169,10 @@ void loop()
 }
 // !main
 
+/**
+ * @brief Get the Gnss Data from instance and set to gnss data object
+ *
+ */
 static void getGnssData()
 {
   gnssData.siv = myGNSS.getSIV(1);
@@ -193,6 +197,10 @@ static void getGnssData()
   gnssData.vel = myGNSS.getGroundSpeed(1) * 0.0036f; // mm/s -> km/h
 }
 
+/**
+ * @brief data write to SD card
+ *
+ */
 static void gnssDataWriteToSd()
 {
 
@@ -211,11 +219,15 @@ static void gnssDataWriteToSd()
   file.close();
 }
 
-// TODO add anti-chattering, anti_unstable_position method
+/**
+ * @brief check GPS status and judge valid or not
+ *
+ */
 static bool isGpsValid()
 {
   static uint32_t recover_buffer_time_anchor = millis();
 
+  // TODO add anti-chattering, anti_unstable_position method
   if (gnssData.hdop > 2.5f)
   { // tmp
     recover_buffer_time_anchor = millis();
@@ -246,6 +258,10 @@ static bool isGpsValid()
   return true;
 }
 
+/**
+ * @brief check SDCard is empty or not
+ *
+ */
 static bool isSDCardReady()
 {
   sdcard_type_t Type = SD.cardType();

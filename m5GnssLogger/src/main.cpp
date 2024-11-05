@@ -176,25 +176,25 @@ void loop()
 static void getGnssData()
 {
   gnssData.siv = myGNSS.getSIV(1);
-  gnssData.lat = (double)myGNSS.getLatitude(1) * 0.0000001;
-  gnssData.lng = (double)myGNSS.getLongitude(1) * 0.0000001;
-  gnssData.alt = (double)myGNSS.getAltitude(1) * 0.001;
+  gnssData.lat = (double)myGNSS.getLatitude(0) * 0.0000001;
+  gnssData.lng = (double)myGNSS.getLongitude(0) * 0.0000001;
+  gnssData.alt = (double)myGNSS.getAltitude(0) * 0.001;
 
-  gnssData.dateValid = myGNSS.getDateValid();
-  gnssData.year = myGNSS.getYear(1);
-  gnssData.month = myGNSS.getMonth(1);
-  gnssData.day = myGNSS.getDay(1);
+  gnssData.dateValid = myGNSS.getDateValid(0);
+  gnssData.year = myGNSS.getYear(0);
+  gnssData.month = myGNSS.getMonth(0);
+  gnssData.day = myGNSS.getDay(0);
 
-  gnssData.timeValid = myGNSS.getTimeValid();
-  gnssData.hour = myGNSS.getHour(1);
-  gnssData.minute = myGNSS.getMinute(1);
-  gnssData.second = myGNSS.getSecond(1);
+  gnssData.timeValid = myGNSS.getTimeValid(0);
+  gnssData.hour = myGNSS.getHour(0);
+  gnssData.minute = myGNSS.getMinute(0);
+  gnssData.second = myGNSS.getSecond(0);
 
-  gnssData.fixType = myGNSS.getFixType(1);
-  gnssData.rtk = myGNSS.getCarrierSolutionType(1);
-  gnssData.accuracy = myGNSS.getPositionAccuracy(1);
-  gnssData.hdop = myGNSS.getHorizontalDOP(1) * 0.01f;
-  gnssData.vel = myGNSS.getGroundSpeed(1) * 0.0036f; // mm/s -> km/h
+  gnssData.fixType = myGNSS.getFixType(0);
+  gnssData.rtk = myGNSS.getCarrierSolutionType(0);
+  gnssData.accuracy = myGNSS.getPositionAccuracy(0);
+  gnssData.hdop = myGNSS.getHorizontalDOP(0) * 0.01f;
+  gnssData.vel = myGNSS.getGroundSpeed(0) * 0.0036f; // mm/s -> km/h
 }
 
 /**

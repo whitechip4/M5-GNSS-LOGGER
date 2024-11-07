@@ -6,7 +6,9 @@
 typedef struct
 {
   uint8_t siv; // num of satellite
-  double lat;
+  int32_t latRaw;
+  int32_t lngRaw;
+  double lat;   //double is 32bit on m5stack core2....
   double lng;
   double alt; // m
   float vel;  // km/s
@@ -37,8 +39,11 @@ char fileName[64];
 
 GNSS_DATA gnssData{
   .siv = 0,
+  .latRaw = 0,
+  .lngRaw = 0,
   .lat = 0.0,
   .lng = 0.0,
+
   .alt = 0.0,
   .vel = 0.0f,
 
@@ -77,15 +82,22 @@ void setup()
     delay(5000);
     ESP.restart();
   }
-  myGNSS.setUART1Output(COM_TYPE_UBX); // ubx may high accuracy...?
+  myGNSS.setUART1Output(COM_TYPE_NMEA); // ubx may high accuracy...?
+  myGNSS.setHighPrecisionMode(true);
+
   uint8_t initialTimeSecond = 0;
 
-  // waiting for signal be stable
+  // waiting for get time signal
   do
   {
+    M5.Lcd.print("Waiting Time Signal...\n");
+    M5.Lcd.printf("DT: %04d/%02d/%02d_%02d%02d%02d\n", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
+    M5.Lcd.clear(0x000000);
+    M5.Lcd.setCursor(0, 0);
+
     myGNSS.checkUblox();
-    M5.Lcd.print("Waiting Time Signal...");
     getGnssData();
+    delay(1000);
   } while (!(gnssData.timeValid && gnssData.dateValid && (gnssData.second != 0) && (gnssData.day != 0))); // value check
 
   M5.Lcd.clear(0x000000);
@@ -102,7 +114,7 @@ void setup()
     ESP.restart();
   }
   char lineStr[64];
-  sprintf(lineStr, "date,time,lat,lng,alt,spd,val,hdop");
+  sprintf(lineStr, "date,time,lat,lng,alt,spd,siv,hdop");
   file = SD.open(fileName, FILE_APPEND);
   file.println(lineStr);
   file.close();
@@ -155,10 +167,14 @@ void loop()
       M5.Lcd.printf("hdop: %.2f\n", gnssData.hdop);
       M5.Lcd.printf("fixType: %d\n", gnssData.fixType);
       M5.Lcd.printf("rtk: %d\n", gnssData.rtk);
-      M5.Lcd.printf("accuracy: %d\n", gnssData.accuracy);
+      // M5.Lcd.printf("accuracy: %d\n", gnssData.accuracy);
+
+      M5.Lcd.printf("LatInt: %d\n", gnssData.latRaw);
+      M5.Lcd.printf("LonInt: %d\n", gnssData.lngRaw);
 
       M5.Lcd.printf("Lat: %.6f\n", gnssData.lat);
       M5.Lcd.printf("Lon: %.6f\n", gnssData.lng);
+
       M5.Lcd.printf("Alt: %.6f\n", gnssData.alt);
       M5.Lcd.printf("Vel: %.1f\n", gnssData.vel);
 
@@ -176,8 +192,11 @@ void loop()
 static void getGnssData()
 {
   gnssData.siv = myGNSS.getSIV(1);
-  gnssData.lat = (double)myGNSS.getLatitude(0) * 0.0000001;
-  gnssData.lng = (double)myGNSS.getLongitude(0) * 0.0000001;
+  gnssData.latRaw = myGNSS.getLatitude(0);
+  gnssData.lngRaw = myGNSS.getLongitude(0);
+  gnssData.lat = (double)gnssData.latRaw * 0.0000001;
+  gnssData.lng = (double)gnssData.lngRaw * 0.0000001;
+
   gnssData.alt = (double)myGNSS.getAltitude(0) * 0.001;
 
   gnssData.dateValid = myGNSS.getDateValid(0);
@@ -228,12 +247,12 @@ static bool isGpsValid()
   static uint32_t recover_buffer_time_anchor = millis();
 
   // TODO add anti-chattering, anti_unstable_position method
-  if (gnssData.hdop > 2.5f)
+  if (gnssData.hdop > 2.0f)
   { // tmp
     recover_buffer_time_anchor = millis();
     return false;
   }
-  if (gnssData.siv < 10)
+  if (gnssData.siv < 12)
   { // tmp
     recover_buffer_time_anchor = millis();
     return false;

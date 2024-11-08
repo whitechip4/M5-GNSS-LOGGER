@@ -92,16 +92,12 @@ void setup()
   {
     M5.Lcd.print("Waiting Time Signal...\n");
     M5.Lcd.printf("DT: %04d/%02d/%02d_%02d%02d%02d\n", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
-    M5.Lcd.clear(0x000000);
-    M5.Lcd.setCursor(0, 0);
-
     myGNSS.checkUblox();
     getGnssData();
     delay(1000);
+    M5.Lcd.clear(0x000000);
+    M5.Lcd.setCursor(0, 0);
   } while (!(gnssData.timeValid && gnssData.dateValid && (gnssData.second != 0) && (gnssData.day != 0))); // value check
-
-  M5.Lcd.clear(0x000000);
-  M5.Lcd.setCursor(0, 0);
 
   sprintf(fileName, "/gnss_csv_data_%04d%02d%02d_%02d%02d%02d.csv", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
 

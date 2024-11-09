@@ -227,7 +227,7 @@ static void gnssDataWriteToSd()
   char datetimeUtc[32]; // TODO: UTC->JST convert
   sprintf(datetimeUtc, "%04d/%02d/%02d,%02d:%02d:%02d", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
   char lineStr[128];
-  sprintf(lineStr, "%s,%lf,%lf,%.1f,%.0f,%d,%2f", datetimeUtc, gnssData.lat, gnssData.lng, gnssData.alt, gnssData.vel, gnssData.siv, gnssData.hdop);
+  sprintf(lineStr, "%s,%lf,%lf,%.1f,%.1f,%d,%2f", datetimeUtc, gnssData.lat, gnssData.lng, gnssData.alt, gnssData.vel, gnssData.siv, gnssData.hdop);
 
   file = SD.open(fileName, FILE_APPEND);
   file.println(lineStr);
@@ -248,7 +248,7 @@ static bool isGpsValid()
     recover_buffer_time_anchor = millis();
     return false;
   }
-  if (gnssData.siv < 12)
+  if (gnssData.siv < 11)
   { // tmp
     recover_buffer_time_anchor = millis();
     return false;
@@ -267,6 +267,11 @@ static bool isGpsValid()
   // position info is unstable when recover
   if (millis() - recover_buffer_time_anchor < 5000)
   {
+    return false;
+  }
+
+  //speed limit remove drift
+  if( fabs(gnssData.vel ) < 1.5f){
     return false;
   }
 

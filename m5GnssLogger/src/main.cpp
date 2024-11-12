@@ -52,10 +52,6 @@ File file;
 char fileName[64];
 char fileNameKarman[128];
 
-float dt = 1.0; // GNSS sampling time
-uint32_t preCalculateTick = 0;
-uint32_t calculateTick = 0;
-
 GNSS_DATA gnssData{
     .siv = 0,
     .latRaw = 0,
@@ -193,16 +189,11 @@ void loop()
     // Date update -> write and display
     if (gnssData.second != preSecond)
     {
-
-      calculateTick = millis();
-      dt = (calculateTick - preCalculateTick) * 0.001;
-
       preSecond = gnssData.second;
 
-      gnssDataWriteToSd();
       karmanFilter();
+      gnssDataWriteToSd();
       updateDisplay();
-      preCalculateTick = calculateTick;
     }
   }
 }
@@ -211,9 +202,9 @@ void loop()
 static void karmanFilter()
 {
   // for pos
-  float kSatteliteNoize = constrain(2.0 / gnssData.siv, 0.01, 2.0) * 10.0f;
-  gnssData.posMeasurementNoise = (gnssData.hdop * 2.0f) * kSatteliteNoize;
-  gnssData.posProcessNoise = constrain(gnssData.vel * 0.1f ,0.01f,10.0f) * kSatteliteNoize;
+  float kSatteliteNoize = constrain(16.0f / gnssData.siv, 0.001, 2.0);
+  gnssData.posMeasurementNoise = (gnssData.hdop * 1.0f) * kSatteliteNoize;
+  gnssData.posProcessNoise = constrain(gnssData.vel * 2.0f, 0.01f, 10.0f) ;
 
   // predict
   gnssData.latCovariance += gnssData.posProcessNoise;
@@ -224,17 +215,16 @@ static void karmanFilter()
   double kalmanGainLng = gnssData.lngCovariance / (gnssData.latCovariance + gnssData.posMeasurementNoise);
 
   // estimate
+
   gnssData.latEstimate += kalmanGainLat * (gnssData.lat - gnssData.latEstimate);
   gnssData.lngEstimate += kalmanGainLng * (gnssData.lng - gnssData.lngEstimate);
-
   // update
   gnssData.latCovariance *= (1 - kalmanGainLat);
   gnssData.lngCovariance *= (1 - kalmanGainLng);
 
-
   // ----- for vel
-  gnssData.posMeasurementNoise = (gnssData.pdop * 1.0f) * kSatteliteNoize;
-  gnssData.posProcessNoise = (gnssData.pdop * 0.1f) * kSatteliteNoize;
+  gnssData.velMeasurementNoise = (gnssData.pdop * 1.0f) * kSatteliteNoize;
+  gnssData.velProcessNoise = constrain(gnssData.vel, 0.01f, 10.0f) ;
 
   // predict
   gnssData.velCovariance += gnssData.velProcessNoise;
@@ -350,7 +340,7 @@ static void gnssDataWriteToSd()
   file.println(lineStr);
   file.close();
 
-  sprintf(lineStr, "%s,%lf,%lf,%.1f,%.1f,%d,%2f", datetimeUtc, gnssData.latEstimate, gnssData.lngEstimate, gnssData.alt, gnssData.vel, gnssData.siv, gnssData.hdop);
+  sprintf(lineStr, "%s,%lf,%lf,%.1f,%.1f,%d,%2f", datetimeUtc, gnssData.latEstimate, gnssData.lngEstimate, gnssData.alt, gnssData.velEstimate, gnssData.siv, gnssData.hdop);
 
   file = SD.open(fileNameKarman, FILE_APPEND);
   file.println(lineStr);

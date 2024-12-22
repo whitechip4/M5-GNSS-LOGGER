@@ -295,12 +295,13 @@ static void gnssDataWriteToSd()
   char lineStr[128];
   sprintf(lineStr, "%s,%lf,%lf,%.1f,%.1f,%d,%2f", datetimeUtc, gnssData.lat, gnssData.lng, gnssData.alt, gnssData.vel, gnssData.siv, gnssData.hdop);
   
+  // raw data for post process
+  file = SD.open(fileRawDataName, FILE_APPEND);
+  file.println(lineStr);
+  file.close();
+
   if (!isGpsValid())
   {
-    // raw data for post process
-    file = SD.open(fileRawDataName, FILE_APPEND);
-    file.println(lineStr);
-    file.close();
     return;
   }
 

@@ -2,6 +2,7 @@
 #include <M5Core2.h>
 #include <AXP192.h>
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
+#include <time.h>
 
 typedef struct
 {
@@ -16,31 +17,20 @@ typedef struct
 
   bool dateValid;
   uint16_t year;
-  uint8_t month;
-  uint8_t day;
+  uint16_t month;
+  uint16_t day;
 
   bool timeValid;
-  uint8_t hour;
-  uint8_t minute;
-  uint8_t second;
+  uint16_t hour;
+  uint16_t minute;
+  uint16_t second;
+  uint16_t millisecond;
 
   uint8_t fixType; // 0=no fix, 1=dead reckoning, 2=2D, 3=3D, 4=GNSS, 5=Time fix
   float hdop;
   float pdop;
 
-  // for karman filter
-  float latEstimate;         // 推定された緯度
-  float lngEstimate;         // 推定された経度
-  float latCovariance;       // 緯度の共分散
-  float lngCovariance;       // 経度の共分散
-  float posProcessNoise;     // プロセスノイズ
-  float posMeasurementNoise; // 測定ノイズ
-
-  // for spd karman filter
-  float velEstimate;
-  float velCovariance;
-  float velProcessNoise;
-  float velMeasurementNoise;
+  bool isFixOk;
 
 } GNSS_DATA;
 
@@ -50,7 +40,7 @@ AXP192 axp192;
 
 File file;
 char fileName[64];
-char fileNameKarman[128];
+char fileRawDataName[128];
 
 GNSS_DATA gnssData{
     .siv = 0,
@@ -76,19 +66,7 @@ GNSS_DATA gnssData{
     .hdop = 99.0f,
     .pdop = 99.0f,
 
-    // for karmanfilter
-    .latEstimate = 0.0f,   // 推定された緯度
-    .lngEstimate = 0.0f,   // 推定された経度
-    .latCovariance = 1.0f, // 緯度の共分散
-    .lngCovariance = 1.0f, // 経度の共分散
-
-    .posProcessNoise = 0.1f,     // プロセスノイズ
-    .posMeasurementNoise = 1.0f, // 測定ノイズ
-
-    .velEstimate = 0.0f,
-    .velCovariance = 1.0f,
-    .velProcessNoise = 0.1f,
-    .velMeasurementNoise = 1.0f,
+    .isFixOk = false,
 
 };
 float batVoltage = 0;
@@ -101,7 +79,8 @@ static void gnssDataWriteToSd();
 static bool isSDCardReady();
 static void getGnssData();
 static void updateDisplay();
-static void karmanFilter();
+static void setJstTimeFromUTCUnixTime(time_t utcTime, GNSS_DATA &_gnssData);
+
 
 // main
 void setup()
@@ -109,6 +88,7 @@ void setup()
   M5.begin(true, true, true, true);
   M5.Lcd.setTextFont(2);
   Serial2.begin(38400, SERIAL_8N1, 13, 14); // for NEO_M9N
+  M5.Lcd.print("Initializing...\n");
 
   if (!myGNSS.begin(Serial2))
   {
@@ -116,15 +96,27 @@ void setup()
     delay(5000);
     ESP.restart();
   }
+  myGNSS.factoryDefault();
+  delay(5000);
+
   myGNSS.setUART1Output(COM_TYPE_UBX); // ubx may high accuracy...?
+  myGNSS.setDynamicModel(DYN_MODEL_PORTABLE);
+  myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GPS); // Make sure GPS is enabled (we must leave at least one major GNSS enabled!)
+  myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_SBAS); // 
+  myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GALILEO); // 
+  myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_BEIDOU); //
+  myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GLONASS); // 
   myGNSS.setHighPrecisionMode(true);
+  myGNSS.setNavigationFrequency(2);
+  M5.Lcd.clear(0x000000);
+  M5.Lcd.setCursor(0, 0);
 
   uint8_t initialTimeSecond = 0;
 
   // waiting for get time signal
   do
   {
-    M5.Lcd.print("Waiting Time Signal...\n");
+    M5.Lcd.print("Waiting for receive Time Signal...\n");
     M5.Lcd.printf("DT: %04d/%02d/%02d_%02d%02d%02d\n", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
     myGNSS.checkUblox();
     getGnssData();
@@ -134,7 +126,7 @@ void setup()
   } while (!(gnssData.timeValid && gnssData.dateValid && (gnssData.second != 0) && (gnssData.day != 0))); // value check
 
   sprintf(fileName, "/gnss_csv_data_%04d%02d%02d_%02d%02d%02d.csv", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
-  sprintf(fileNameKarman, "/gnss_csv_data_%04d%02d%02d_%02d%02d%02d_karman.csv", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
+  sprintf(fileRawDataName, "/gnss_csv_data_%04d%02d%02d_%02d%02d%02d_raw.csv", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
 
   // initial write (header)
   if (!isSDCardReady())
@@ -151,24 +143,21 @@ void setup()
   file.close();
 
   sprintf(lineStr, "date,time,lat,lng,alt,spd,siv,hdop");
-  file = SD.open(fileNameKarman, FILE_APPEND);
+  file = SD.open(fileRawDataName, FILE_APPEND);
   file.println(lineStr);
   file.close();
 
   do
   {
     M5.Lcd.print("Waiting gnss data be stable...\n");
+    M5.Lcd.printf("Satellites: %d (>= 7)\n", gnssData.siv);
     myGNSS.checkUblox();
     getGnssData();
     delay(500);
     M5.Lcd.clear(0x000000);
     M5.Lcd.setCursor(0, 0);
 
-  } while ((!isGpsValid()) && (gnssData.siv > 10));
-  // initialize estimate pos
-  gnssData.latEstimate = gnssData.lat;
-  gnssData.lngEstimate = gnssData.lng;
-  gnssData.velEstimate = gnssData.vel;
+  } while ((!isGpsValid()) && (gnssData.siv < 7));
 }
 
 void loop()
@@ -191,7 +180,6 @@ void loop()
     {
       preSecond = gnssData.second;
 
-      karmanFilter();
       gnssDataWriteToSd();
       updateDisplay();
     }
@@ -199,53 +187,12 @@ void loop()
 }
 // !main
 
-static void karmanFilter()
-{
-  // for pos
-  float kSatteliteNoize = constrain(16.0f / gnssData.siv, 0.001, 2.0);
-  gnssData.posMeasurementNoise = (gnssData.hdop * 1.0f) * kSatteliteNoize;
-  gnssData.posProcessNoise = constrain(gnssData.vel * 2.0f, 0.01f, 10.0f) ;
-
-  // predict
-  gnssData.latCovariance += gnssData.posProcessNoise;
-  gnssData.lngCovariance += gnssData.posProcessNoise;
-
-  // karman gain
-  double kalmanGainLat = gnssData.latCovariance / (gnssData.latCovariance + gnssData.posMeasurementNoise);
-  double kalmanGainLng = gnssData.lngCovariance / (gnssData.latCovariance + gnssData.posMeasurementNoise);
-
-  // estimate
-
-  gnssData.latEstimate += kalmanGainLat * (gnssData.lat - gnssData.latEstimate);
-  gnssData.lngEstimate += kalmanGainLng * (gnssData.lng - gnssData.lngEstimate);
-  // update
-  gnssData.latCovariance *= (1 - kalmanGainLat);
-  gnssData.lngCovariance *= (1 - kalmanGainLng);
-
-  // ----- for vel
-  gnssData.velMeasurementNoise = (gnssData.pdop * 1.0f) * kSatteliteNoize;
-  gnssData.velProcessNoise = constrain(gnssData.vel, 0.01f, 10.0f) ;
-
-  // predict
-  gnssData.velCovariance += gnssData.velProcessNoise;
-
-  // karman gain
-  double kalmanGainVel = gnssData.velCovariance / (gnssData.velCovariance + gnssData.velMeasurementNoise);
-
-  // estimate
-  gnssData.velEstimate += kalmanGainVel * (gnssData.vel - gnssData.velEstimate);
-
-  // update
-  gnssData.velCovariance *= (1 - kalmanGainVel);
-}
-
 /**
  * @brief Get the Gnss Data from instance and set to gnss data object
  *
  */
 static void getGnssData()
 {
-
   gnssData.siv = myGNSS.getSIV(1);
   gnssData.latRaw = myGNSS.getLatitude(0);
   gnssData.lngRaw = myGNSS.getLongitude(0);
@@ -255,19 +202,35 @@ static void getGnssData()
   gnssData.alt = (double)myGNSS.getAltitude(0) * 0.001;
 
   gnssData.dateValid = myGNSS.getDateValid(0);
-  gnssData.year = myGNSS.getYear(0);
-  gnssData.month = myGNSS.getMonth(0);
-  gnssData.day = myGNSS.getDay(0);
-
   gnssData.timeValid = myGNSS.getTimeValid(0);
-  gnssData.hour = myGNSS.getHour(0);
-  gnssData.minute = myGNSS.getMinute(0);
-  gnssData.second = myGNSS.getSecond(0);
+
+  time_t unixTimeUTCByGnss = (time_t)myGNSS.getUnixEpoch(0);  // unixEpoch is UTC and seconds order
+  setJstTimeFromUTCUnixTime(unixTimeUTCByGnss, gnssData);
+  gnssData.millisecond = myGNSS.getMillisecond(0);
 
   gnssData.fixType = myGNSS.getFixType(0);
   gnssData.hdop = myGNSS.getHorizontalDOP(0) * 0.01f;
   gnssData.pdop = myGNSS.getPositionDOP(0) * 0.01f;
   gnssData.vel = myGNSS.getGroundSpeed(0) * 0.0036f; // mm/s -> km/h
+
+  gnssData.isFixOk = myGNSS.getGnssFixOk(0);
+}
+
+/** 
+ * @brief set JST time for gnssData from UTC unix time
+ * 
+ */
+
+static void setJstTimeFromUTCUnixTime(time_t utcTime, GNSS_DATA &_gnssData)
+{
+  utcTime += 9 * 3600;
+  struct tm *jstTime = gmtime(&utcTime);
+  _gnssData.year = jstTime->tm_year + 1900;
+  _gnssData.month = jstTime->tm_mon + 1;
+  _gnssData.day = jstTime->tm_mday;
+  _gnssData.hour = jstTime->tm_hour;
+  _gnssData.minute = jstTime->tm_min;
+  _gnssData.second = jstTime->tm_sec;
 }
 
 /**
@@ -301,21 +264,16 @@ static void updateDisplay()
   M5.Lcd.printf("hdop: %.2f\n", gnssData.hdop);
   M5.Lcd.printf("pdop: %.2f\n", gnssData.pdop);
 
-  // M5.Lcd.printf("dt: %f\n", dt);
+  M5.Lcd.printf("isFixOK: %d\n",gnssData.isFixOk);
+  M5.Lcd.printf("fixtype: %d\n",gnssData.fixType);
 
   M5.Lcd.printf("Lat: %.6f\n", gnssData.lat);
   M5.Lcd.printf("Lon: %.6f\n", gnssData.lng);
 
-  M5.Lcd.printf("LatKar: %.6f\n", gnssData.latEstimate);
-  M5.Lcd.printf("LonKar: %.6f\n", gnssData.lngEstimate);
-  M5.Lcd.printf("mNz: %.6f\n", gnssData.posMeasurementNoise);
-  M5.Lcd.printf("pNz: %.6f\n", gnssData.posProcessNoise);
-
-  // M5.Lcd.printf("Alt: %.6f\n", gnssData.alt);
+  M5.Lcd.printf("Alt: %.6f\n", gnssData.alt);
   M5.Lcd.printf("Vel: %.1f\n", gnssData.vel);
-  M5.Lcd.printf("VelEst: %.1f\n", gnssData.velEstimate);
 
-  // M5.Lcd.printf("DT: %04d/%02d/%02d_%02d%02d%02d\n", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
+  M5.Lcd.printf("DT: %04d/%02d/%02d_%02d%02d%02d\n", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
   M5.Lcd.printf("BAT: %.2f\n", batVoltage);
 }
 
@@ -326,25 +284,31 @@ static void updateDisplay()
 static void gnssDataWriteToSd()
 {
 
-  if (!isGpsValid() || !isSDCardReady())
+  if (!isSDCardReady())
   {
     return;
   }
+
 
   char datetimeUtc[32]; // TODO: UTC->JST convert
   sprintf(datetimeUtc, "%04d/%02d/%02d,%02d:%02d:%02d", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
   char lineStr[128];
   sprintf(lineStr, "%s,%lf,%lf,%.1f,%.1f,%d,%2f", datetimeUtc, gnssData.lat, gnssData.lng, gnssData.alt, gnssData.vel, gnssData.siv, gnssData.hdop);
+  
+  if (!isGpsValid())
+  {
+    // raw data for post process
+    file = SD.open(fileRawDataName, FILE_APPEND);
+    file.println(lineStr);
+    file.close();
+    return;
+  }
 
+  // only valid data.
   file = SD.open(fileName, FILE_APPEND);
   file.println(lineStr);
   file.close();
 
-  sprintf(lineStr, "%s,%lf,%lf,%.1f,%.1f,%d,%2f", datetimeUtc, gnssData.latEstimate, gnssData.lngEstimate, gnssData.alt, gnssData.velEstimate, gnssData.siv, gnssData.hdop);
-
-  file = SD.open(fileNameKarman, FILE_APPEND);
-  file.println(lineStr);
-  file.close();
 }
 
 /**
@@ -353,28 +317,24 @@ static void gnssDataWriteToSd()
  */
 static bool isGpsValid()
 {
-  // static uint32_t recover_buffer_time_anchor = millis();
+  static uint32_t recover_buffer_time_anchor = millis();
 
   // TODO add anti-chattering, anti_unstable_position method
-  // if (gnssData.hdop > 2.0f)
-  // { // tmp
-  //   recover_buffer_time_anchor = millis();
-  //   return false;
-  // }
-  // if (gnssData.siv < 11)
-  // { // tmp
-  //   recover_buffer_time_anchor = millis();
-  //   return false;
-  // }
 
-  if (gnssData.hdop > 90.f)
+  if (gnssData.hdop > 6.0f)
   { // tmp
+    recover_buffer_time_anchor = millis();
     return false;
   }
-  if (gnssData.siv < 1)
+  if (gnssData.siv < 5)
   { // tmp
+    recover_buffer_time_anchor = millis();
     return false;
   }
+  if(gnssData.isFixOk != true){
+    return false;
+  }
+
   if (fabs(gnssData.lat) < 0.001f)
   {
     // recover_buffer_time_anchor = millis();
@@ -387,15 +347,10 @@ static bool isGpsValid()
   }
 
   // // position info is unstable when recover
-  // if (millis() - recover_buffer_time_anchor < 5000)
-  // {
-  //   return false;
-  // }
-
-  // //speed limit remove drift
-  // if( fabs(gnssData.vel ) < 1.5f){
-  //   return false;
-  // }
+  if (millis() - recover_buffer_time_anchor < 5000)
+  {
+    return false;
+  }
 
   return true;
 }

@@ -34,6 +34,19 @@ typedef struct
 
 } GNSS_DATA;
 
+typedef struct{
+  float gyroX;
+  float gyroY;
+  float gyroZ;
+  float accelX;
+  float accelY;
+  float accelZ;
+
+  float roll;
+  float pitch;
+  float yaw;
+}IMU_DATA;
+
 // global
 SFE_UBLOX_GNSS myGNSS;
 AXP192 axp192;
@@ -41,6 +54,7 @@ AXP192 axp192;
 File file;
 char fileName[64];
 char fileRawDataName[128];
+char fileImuDataName[128];
 
 GNSS_DATA gnssData{
     .siv = 0,
@@ -69,18 +83,33 @@ GNSS_DATA gnssData{
     .isFixOk = false,
 
 };
+// IMU_DATA imuData{
+//   .gyroX = 0.0f,
+//   .gyroY = 0.0f,
+//   .gyroZ = 0.0f,
+//   .accelX = 0.0f,
+//   .accelY = 0.0f,
+//   .accelZ = 0.0f,
+
+//   .roll = 0.0f,
+//   .pitch = 0.0f,
+//   .yaw = 0.0f
+// };
+
 float batVoltage = 0;
 bool isGpsOk = false;
 bool isSdCardOk = false;
 
 // function prototype
 static bool isGpsValid();
-static void gnssDataWriteToSd();
+static void writeGnssDataToSd();
 static bool isSDCardReady();
 static void getGnssData();
 static void updateDisplay();
 static void setJstTimeFromUTCUnixTime(time_t utcTime, GNSS_DATA &_gnssData);
 
+// static void getImuData();
+// static void writeImuDataToSd();
 
 // main
 void setup()
@@ -89,6 +118,12 @@ void setup()
   M5.Lcd.setTextFont(2);
   Serial2.begin(38400, SERIAL_8N1, 13, 14); // for NEO_M9N
   M5.Lcd.print("Initializing...\n");
+
+  
+  M5.IMU.Init();
+
+  M5.IMU.SetAccelFsr(M5.IMU.AFS_8G);  // 
+  M5.IMU.SetGyroFsr(M5.IMU.GFS_2000DPS); //
 
   if (!myGNSS.begin(Serial2))
   {
@@ -107,7 +142,7 @@ void setup()
   myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_BEIDOU); //
   myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GLONASS); // 
   myGNSS.setHighPrecisionMode(true);
-  myGNSS.setNavigationFrequency(2);
+  myGNSS.setNavigationFrequency(1);
   M5.Lcd.clear(0x000000);
   M5.Lcd.setCursor(0, 0);
 
@@ -127,6 +162,7 @@ void setup()
 
   sprintf(fileName, "/gnss_csv_data_%04d%02d%02d_%02d%02d%02d.csv", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
   sprintf(fileRawDataName, "/gnss_csv_data_%04d%02d%02d_%02d%02d%02d_raw.csv", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
+  sprintf(fileImuDataName, "/gnss_csv_data_%04d%02d%02d_%02d%02d%02d_imu.csv", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
 
   // initial write (header)
   if (!isSDCardReady())
@@ -136,7 +172,7 @@ void setup()
     delay(10000);
     ESP.restart();
   }
-  char lineStr[64];
+  char lineStr[128];
   sprintf(lineStr, "date,time,lat,lng,alt,spd,siv,hdop");
   file = SD.open(fileName, FILE_APPEND);
   file.println(lineStr);
@@ -146,6 +182,12 @@ void setup()
   file = SD.open(fileRawDataName, FILE_APPEND);
   file.println(lineStr);
   file.close();
+
+  sprintf(lineStr, "date,time,millisec,gyroX,gyroY,gyroZ,accX,accY,accZ,roll,pitch,yaw");
+  file = SD.open(fileImuDataName, FILE_APPEND);
+  file.println(lineStr);
+  file.close();
+
 
   do
   {
@@ -163,26 +205,30 @@ void setup()
 void loop()
 {
   static uint8_t preSecond = 0;
+  static uint16_t preMillisecond = 0;
 
-  // 0.1msec process
+  // 0.1sec process
   if (!(millis() % 100))
   {
     // update
     M5.update();
     myGNSS.checkUblox(); // read data from serial.
     getGnssData();       // get data and set to gnssData.
-    batVoltage = axp192.GetBatVoltage();
     isGpsOk = isGpsValid();
-    isSdCardOk = isSDCardReady();
 
     // Date update -> write and display
     if (gnssData.second != preSecond)
     {
-      preSecond = gnssData.second;
-
-      gnssDataWriteToSd();
+      isSdCardOk = isSDCardReady();
+      writeGnssDataToSd();
+      // getImuData();
+      // writeImuDataToSd();
+      batVoltage = axp192.GetBatVoltage();   //for display only
       updateDisplay();
+
+      preSecond = gnssData.second;
     }
+
   }
 }
 // !main
@@ -239,7 +285,9 @@ static void setJstTimeFromUTCUnixTime(time_t utcTime, GNSS_DATA &_gnssData)
  */
 static void updateDisplay()
 {
-  // tempolary
+  // TODO: fix flicker 
+
+  // tempolary use m5 lcd class
   M5.Lcd.fillScreen(BLACK);
   M5.Lcd.setTextColor(WHITE);
   M5.Lcd.setTextSize(1);
@@ -270,25 +318,29 @@ static void updateDisplay()
   M5.Lcd.printf("Lat: %.6f\n", gnssData.lat);
   M5.Lcd.printf("Lon: %.6f\n", gnssData.lng);
 
-  M5.Lcd.printf("Alt: %.6f\n", gnssData.alt);
+  M5.Lcd.printf("Alt: %.2f\n", gnssData.alt);
   M5.Lcd.printf("Vel: %.1f\n", gnssData.vel);
 
   M5.Lcd.printf("DT: %04d/%02d/%02d_%02d%02d%02d\n", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
   M5.Lcd.printf("BAT: %.2f\n", batVoltage);
+
+  // M5.Lcd.printf("GX: %.2f GY: %.2f GZ: %.2f\n",imuData.gyroX,imuData.gyroY,imuData.gyroZ);
+  // M5.Lcd.printf("AX: %.2f AY: %.2f AZ: %.2f\n",imuData.accelX,imuData.accelY,imuData.accelZ);
+  // M5.Lcd.printf("R: %.2f P: %.2f Y: %.2f\n",imuData.roll,imuData.pitch,imuData.yaw);
+
 }
 
 /**
  * @brief data write to SD card
  *
  */
-static void gnssDataWriteToSd()
+static void writeGnssDataToSd()
 {
 
-  if (!isSDCardReady())
+  if (!isSdCardOk)
   {
     return;
   }
-
 
   char datetimeUtc[32]; // TODO: UTC->JST convert
   sprintf(datetimeUtc, "%04d/%02d/%02d,%02d:%02d:%02d", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
@@ -300,7 +352,7 @@ static void gnssDataWriteToSd()
   file.println(lineStr);
   file.close();
 
-  if (!isGpsValid())
+  if (!isGpsOk)
   {
     return;
   }
@@ -369,3 +421,27 @@ static bool isSDCardReady()
   }
   return true;
 }
+
+// static void getImuData(){
+//   M5.IMU.getAccelData(&imuData.accelX,&imuData.accelY,&imuData.accelZ);
+//   M5.IMU.getGyroData(&imuData.gyroX,&imuData.gyroY,&imuData.gyroZ);
+//   M5.IMU.getAhrsData(&imuData.pitch,&imuData.roll,&imuData.yaw);
+// }
+
+// static void writeImuDataToSd(){
+//   if (!isSdCardOk)
+//   {
+//     return;
+//   }
+
+//   char datetimeJst[32]; // TODO: UTC->JST convert
+//   sprintf(datetimeJst, "%04d/%02d/%02d,%02d:%02d:%02d", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
+//   char lineStr[256];
+//   sprintf(lineStr, "%s,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f", datetimeJst, gnssData.millisecond, imuData.gyroX, imuData.gyroY, imuData.gyroZ, imuData.accelX, imuData.accelY, imuData.accelZ, imuData.roll, imuData.pitch, imuData.yaw);
+  
+//   // raw data for post process
+//   file = SD.open(fileImuDataName, FILE_APPEND);
+//   file.println(lineStr);
+//   file.close();
+
+// }

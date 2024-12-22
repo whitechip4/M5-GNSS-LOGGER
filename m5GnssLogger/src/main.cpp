@@ -75,7 +75,7 @@ bool isSdCardOk = false;
 
 // function prototype
 static bool isGpsValid();
-static void gnssDataWriteToSd();
+static void writeGnssDataToSd();
 static bool isSDCardReady();
 static void getGnssData();
 static void updateDisplay();
@@ -180,7 +180,7 @@ void loop()
     {
       preSecond = gnssData.second;
 
-      gnssDataWriteToSd();
+      writeGnssDataToSd();
       updateDisplay();
     }
   }
@@ -281,10 +281,10 @@ static void updateDisplay()
  * @brief data write to SD card
  *
  */
-static void gnssDataWriteToSd()
+static void writeGnssDataToSd()
 {
 
-  if (!isSDCardReady())
+  if (!isSdCardOk)
   {
     return;
   }
@@ -300,7 +300,7 @@ static void gnssDataWriteToSd()
   file.println(lineStr);
   file.close();
 
-  if (!isGpsValid())
+  if (!isGpsOk)
   {
     return;
   }

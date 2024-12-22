@@ -73,6 +73,12 @@ float batVoltage = 0;
 bool isGpsOk = false;
 bool isSdCardOk = false;
 
+uint8_t viewMode = 0;
+
+uint32_t vibEndTimeMillis = 0;
+bool vibFlag = false;
+
+
 // function prototype
 static bool isGpsValid();
 static void writeGnssDataToSd();
@@ -81,6 +87,8 @@ static void getGnssData();
 static void updateDisplay();
 static void setJstTimeFromUTCUnixTime(time_t utcTime, GNSS_DATA &_gnssData);
 
+static void viblation(uint32_t ms);
+static void viblationProcess();
 
 // main
 void setup()
@@ -182,7 +190,19 @@ void loop()
 
       writeGnssDataToSd();
       updateDisplay();
+
     }
+
+    if(M5.BtnA.wasPressed()){
+      viewMode = 1 - viewMode;
+      viblation(200);
+    }
+
+    //1msec process
+    if(!(millis() % 1)){
+      viblationProcess();
+    }
+
   }
 }
 // !main
@@ -193,6 +213,7 @@ void loop()
  */
 static void getGnssData()
 {
+
   gnssData.siv = myGNSS.getSIV(1);
   gnssData.latRaw = myGNSS.getLatitude(0);
   gnssData.lngRaw = myGNSS.getLongitude(0);
@@ -223,7 +244,9 @@ static void getGnssData()
 
 static void setJstTimeFromUTCUnixTime(time_t utcTime, GNSS_DATA &_gnssData)
 {
-  utcTime += 9 * 3600;
+  // utcTime += 9 * 3600;
+  utcTime += 8 * 3600;  //temp Taiwan
+
   struct tm *jstTime = gmtime(&utcTime);
   _gnssData.year = jstTime->tm_year + 1900;
   _gnssData.month = jstTime->tm_mon + 1;
@@ -259,22 +282,35 @@ static void updateDisplay()
   }
   M5.Lcd.setTextColor(M5.Lcd.color565(255, 255, 255));
 
-  // display
-  M5.Lcd.printf("Satellites: %d\n", gnssData.siv);
-  M5.Lcd.printf("hdop: %.2f\n", gnssData.hdop);
-  M5.Lcd.printf("pdop: %.2f\n", gnssData.pdop);
+  if(viewMode == 0){
 
-  M5.Lcd.printf("isFixOK: %d\n",gnssData.isFixOk);
-  M5.Lcd.printf("fixtype: %d\n",gnssData.fixType);
+    // display
+    M5.Lcd.printf("Satellites: %d\n", gnssData.siv);
+    M5.Lcd.printf("hdop: %.2f\n", gnssData.hdop);
+    M5.Lcd.printf("pdop: %.2f\n", gnssData.pdop);
 
-  M5.Lcd.printf("Lat: %.6f\n", gnssData.lat);
-  M5.Lcd.printf("Lon: %.6f\n", gnssData.lng);
+    M5.Lcd.printf("isFixOK: %d\n",gnssData.isFixOk);
+    M5.Lcd.printf("fixtype: %d\n",gnssData.fixType);
 
-  M5.Lcd.printf("Alt: %.6f\n", gnssData.alt);
-  M5.Lcd.printf("Vel: %.1f\n", gnssData.vel);
+    M5.Lcd.printf("Lat: %.6f\n", gnssData.lat);
+    M5.Lcd.printf("Lon: %.6f\n", gnssData.lng);
 
-  M5.Lcd.printf("DT: %04d/%02d/%02d_%02d%02d%02d\n", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
-  M5.Lcd.printf("BAT: %.2f\n", batVoltage);
+    M5.Lcd.printf("Alt: %.6f\n", gnssData.alt);
+    M5.Lcd.printf("Vel: %.1f\n", gnssData.vel);
+
+    M5.Lcd.printf("DT: %04d/%02d/%02d_%02d%02d%02d\n", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
+    M5.Lcd.printf("BAT: %.2f\n", batVoltage);
+  }else{
+    //tempolary...
+      M5.Lcd.setTextSize(5);
+      M5.Lcd.printf("%5.0f", gnssData.vel);M5.Lcd.setTextSize(2);M5.Lcd.printf(" km/h");M5.Lcd.setTextSize(5);M5.Lcd.printf("\n");
+      M5.Lcd.setTextSize(1);M5.Lcd.printf("-----------------\n");
+      M5.Lcd.setTextSize(3);
+      M5.Lcd.printf("%7.0f", gnssData.alt);M5.Lcd.setTextSize(2);M5.Lcd.printf("   m high\n");M5.Lcd.setTextSize(3);M5.Lcd.printf("\n");
+      
+      M5.Lcd.setTextSize(2);M5.Lcd.printf("Time: %02d:%02d:%02d\n", gnssData.hour, gnssData.minute, gnssData.second);
+
+  }
 }
 
 /**
@@ -368,4 +404,23 @@ static bool isSDCardReady()
     return false;
   }
   return true;
+}
+
+
+static void viblation(uint32_t ms){
+  vibEndTimeMillis = millis() + ms;
+  vibFlag = true;
+  M5.Axp.SetLDOEnable(3, true); // 振動モーターを付ける
+}
+
+static void viblationProcess (){
+
+  if(!vibFlag){
+    return;
+  }
+
+  if(millis() >= vibEndTimeMillis){
+    vibFlag = false;
+    M5.Axp.SetLDOEnable(3, false); // 振動モーターを消す
+  }
 }

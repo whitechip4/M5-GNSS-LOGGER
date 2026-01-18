@@ -1,371 +1,171 @@
 #include <Arduino.h>
 #include <M5Core2.h>
 #include <AXP192.h>
-#include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 #include <time.h>
 
-typedef struct
-{
-  uint8_t siv; // num of satellite
-  int32_t latRaw;
-  int32_t lngRaw;
-  double lat; // double is 32bit on m5stack core2....
-  double lng;
+#include "config.h"
+#include "gnss.h"
+#include "display.h"
+#include "storage.h"
 
-  double alt; // m
-  float vel;  // km/s
-
-  bool dateValid;
-  uint16_t year;
-  uint16_t month;
-  uint16_t day;
-
-  bool timeValid;
-  uint16_t hour;
-  uint16_t minute;
-  uint16_t second;
-  uint16_t millisecond;
-
-  uint8_t fixType; // 0=no fix, 1=dead reckoning, 2=2D, 3=3D, 4=GNSS, 5=Time fix
-  float hdop;
-  float pdop;
-
-  bool isFixOk;
-
-} GNSS_DATA;
-
-// global
-SFE_UBLOX_GNSS myGNSS;
+// グローバルインスタンス
+GnssModule gnssModule(Serial2);
+DisplayModule displayModule;
+StorageModule storageModule;
 AXP192 axp192;
 
-File file;
-char fileName[64];
-char fileRawDataName[128];
-
-GNSS_DATA gnssData{
-    .siv = 0,
-    .latRaw = 0,
-    .lngRaw = 0,
-    .lat = 0.0,
-    .lng = 0.0,
-
-    .alt = 0.0,
-    .vel = 0.0f,
-
-    .dateValid = false,
-    .year = 0,
-    .month = 0,
-    .day = 0,
-
-    .timeValid = false,
-    .hour = 0,
-    .minute = 0,
-    .second = 0,
-
-    .fixType = 0,
-    .hdop = 99.0f,
-    .pdop = 99.0f,
-
-    .isFixOk = false,
-
-};
+// グローバル変数
+GNSS_DATA gnssData;
 float batVoltage = 0;
 bool isGpsOk = false;
 bool isSdCardOk = false;
+DISPLAY_MODE viewMode = DISPLAY_MODE_DETAIL;
 
-// function prototype
-static bool isGpsValid();
-static void gnssDataWriteToSd();
-static bool isSDCardReady();
-static void getGnssData();
-static void updateDisplay();
-static void setJstTimeFromUTCUnixTime(time_t utcTime, GNSS_DATA &_gnssData);
+// ファイル名（setupで初期化）
+char fileName[64] = "";
+char fileRawDataName[128] = "";
 
+// 振動制御変数
+uint32_t vibEndTimeMillis = 0;
+bool vibFlag = false;
 
-// main
-void setup()
-{
+// 関数プロトタイプ
+static void vibration(uint32_t ms);
+static void vibrationProcess();
+
+/**
+ * @brief 振動を開始
+ * @param ms 振動時間（ミリ秒）
+ */
+static void vibration(uint32_t ms) {
+  vibEndTimeMillis = millis() + ms;
+  vibFlag = true;
+  M5.Axp.SetLDOEnable(3, true); 
+}
+
+/**
+ * @brief 振動プロセス（定期的に呼び出す）
+ */
+static void vibrationProcess() {
+  if (!vibFlag) {
+    return;
+  }
+
+  if (millis() >= vibEndTimeMillis) {
+    vibFlag = false;
+    M5.Axp.SetLDOEnable(3, false); // 振動モーターをOFF
+  }
+}
+
+void setup() {
   M5.begin(true, true, true, true);
-  M5.Lcd.setTextFont(2);
-  Serial2.begin(38400, SERIAL_8N1, 13, 14); // for NEO_M9N
-  M5.Lcd.print("Initializing...\n");
+  displayModule.begin();
+  Serial2.begin(38400, SERIAL_8N1, 13, 14); // NEO_M9N用
+  
+  displayModule.showMessage("Initializing...\n");
 
-  if (!myGNSS.begin(Serial2))
-  {
-    M5.Lcd.print("u-blox GNSS module not detected");
+  // GNSSモジュール初期化
+  if (!gnssModule.begin()) {
+    displayModule.showMessage("u-blox GNSS module not detected");
     delay(5000);
     ESP.restart();
   }
-  myGNSS.factoryDefault();
-  delay(5000);
 
-  myGNSS.setUART1Output(COM_TYPE_UBX); // ubx may high accuracy...?
-  myGNSS.setDynamicModel(DYN_MODEL_PORTABLE);
-  myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GPS); // Make sure GPS is enabled (we must leave at least one major GNSS enabled!)
-  myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_SBAS); // 
-  myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GALILEO); // 
-  myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_BEIDOU); //
-  myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GLONASS); // 
-  myGNSS.setHighPrecisionMode(true);
-  myGNSS.setNavigationFrequency(2);
-  M5.Lcd.clear(0x000000);
-  M5.Lcd.setCursor(0, 0);
+  displayModule.clear();
+  displayModule.showMessage("Waiting for receive Time Signal...\n");
 
+  // 時刻信号受信待機
   uint8_t initialTimeSecond = 0;
-
-  // waiting for get time signal
-  do
-  {
-    M5.Lcd.print("Waiting for receive Time Signal...\n");
-    M5.Lcd.printf("DT: %04d/%02d/%02d_%02d%02d%02d\n", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
-    myGNSS.checkUblox();
-    getGnssData();
+  do {
+    gnssModule.update();
+    gnssModule.getData(gnssData);
+    
+    displayModule.showMessage("Waiting for receive Time Signal...\n");
+    displayModule.showMessage("DT: ");
+    char timeStr[64];
+    sprintf(timeStr, "%04d/%02d/%02d_%02d%02d%02d\n", 
+            gnssData.year, gnssData.month, gnssData.day, 
+            gnssData.hour, gnssData.minute, gnssData.second);
+    displayModule.showMessage(timeStr);
+    
     delay(1000);
-    M5.Lcd.clear(0x000000);
-    M5.Lcd.setCursor(0, 0);
-  } while (!(gnssData.timeValid && gnssData.dateValid && (gnssData.second != 0) && (gnssData.day != 0))); // value check
+    displayModule.clear();
+  } while (!(gnssData.timeValid && gnssData.dateValid && 
+            (gnssData.second != 0) && (gnssData.day != 0)));
 
-  sprintf(fileName, "/gnss_csv_data_%04d%02d%02d_%02d%02d%02d.csv", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
-  sprintf(fileRawDataName, "/gnss_csv_data_%04d%02d%02d_%02d%02d%02d_raw.csv", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
+  // ファイル名生成（グローバル変数を使用）
+  StorageModule::generateFileName("gnss_csv_data", fileName, sizeof(fileName), gnssData, false);
+  StorageModule::generateFileName("gnss_csv_data", fileRawDataName, sizeof(fileRawDataName), gnssData, true);
 
-  // initial write (header)
-  if (!isSDCardReady())
-  {
-    M5.Lcd.setTextColor(M5.Lcd.color565(255, 0, 0));
-    M5.Lcd.printf("Error : SDCardNotFound");
+  // SDカード初期化
+  if (!storageModule.begin()) {
+    displayModule.showMessage("Error : SDCardNotFound");
     delay(10000);
     ESP.restart();
   }
-  char lineStr[64];
-  sprintf(lineStr, "date,time,lat,lng,alt,spd,siv,hdop");
-  file = SD.open(fileName, FILE_APPEND);
-  file.println(lineStr);
-  file.close();
 
-  sprintf(lineStr, "date,time,lat,lng,alt,spd,siv,hdop");
-  file = SD.open(fileRawDataName, FILE_APPEND);
-  file.println(lineStr);
-  file.close();
+  // ヘッダー書き込み（両方のファイルに）
+  storageModule.writeHeader(fileName);
+  storageModule.writeHeader(fileRawDataName);
+  
+  // 初期データ書き込み
+  storageModule.writeData(gnssData, fileName);
+  storageModule.writeRawData(gnssData, fileRawDataName);
 
-  do
-  {
-    M5.Lcd.print("Waiting gnss data be stable...\n");
-    M5.Lcd.printf("Satellites: %d (>= 7)\n", gnssData.siv);
-    myGNSS.checkUblox();
-    getGnssData();
+  // GNSSデータ安定待機
+  do {
+    displayModule.showMessage("Waiting gnss data be stable...\n");
+    char satStr[32];
+    sprintf(satStr, "Satellites: %d (>= 7)\n", gnssData.siv);
+    displayModule.showMessage(satStr);
+    
+    gnssModule.update();
+    gnssModule.getData(gnssData);
+    isGpsOk = gnssModule.isValid(gnssData);
+    
     delay(500);
-    M5.Lcd.clear(0x000000);
-    M5.Lcd.setCursor(0, 0);
-
-  } while ((!isGpsValid()) && (gnssData.siv < 7));
+    displayModule.clear();
+  } while ((!isGpsOk) && (gnssData.siv < 7));
 }
 
-void loop()
-{
+void loop() {
   static uint8_t preSecond = 0;
 
-  // 0.1msec process
-  if (!(millis() % 100))
-  {
-    // update
+  // 100msec job
+  if (!(millis() % 100)) {
     M5.update();
-    myGNSS.checkUblox(); // read data from serial.
-    getGnssData();       // get data and set to gnssData.
+    gnssModule.update();
+    gnssModule.getData(gnssData);
+    
     batVoltage = axp192.GetBatVoltage();
-    isGpsOk = isGpsValid();
-    isSdCardOk = isSDCardReady();
+    isGpsOk = gnssModule.isValid(gnssData);
+    isSdCardOk = storageModule.isReady();
 
-    // Date update -> write and display
-    if (gnssData.second != preSecond)
-    {
+    // 1sec job
+    if (gnssData.second != preSecond) {
       preSecond = gnssData.second;
 
-      gnssDataWriteToSd();
-      updateDisplay();
+      // 生データ書き込み（常に）
+      storageModule.writeRawData(gnssData, fileRawDataName);
+
+      // 有効なデータのみ書き込み
+      if (isGpsOk) {
+        storageModule.writeData(gnssData, fileName);
+      }
+
+      // 表示更新
+      displayModule.update(gnssData, batVoltage, isGpsOk, isSdCardOk, viewMode);
+    }
+
+    // button A pressed -> change view mode
+    if (M5.BtnA.wasPressed()) {
+      viewMode = (viewMode == DISPLAY_MODE_DETAIL) ? DISPLAY_MODE_SIMPLE : DISPLAY_MODE_DETAIL;
+      vibration(200);
+    }
+
+    // 1msec job
+    if (!(millis() % 1)) {
+      vibrationProcess();
     }
   }
-}
-// !main
-
-/**
- * @brief Get the Gnss Data from instance and set to gnss data object
- *
- */
-static void getGnssData()
-{
-  gnssData.siv = myGNSS.getSIV(1);
-  gnssData.latRaw = myGNSS.getLatitude(0);
-  gnssData.lngRaw = myGNSS.getLongitude(0);
-  gnssData.lat = (double)gnssData.latRaw * 0.0000001;
-  gnssData.lng = (double)gnssData.lngRaw * 0.0000001;
-
-  gnssData.alt = (double)myGNSS.getAltitude(0) * 0.001;
-
-  gnssData.dateValid = myGNSS.getDateValid(0);
-  gnssData.timeValid = myGNSS.getTimeValid(0);
-
-  time_t unixTimeUTCByGnss = (time_t)myGNSS.getUnixEpoch(0);  // unixEpoch is UTC and seconds order
-  setJstTimeFromUTCUnixTime(unixTimeUTCByGnss, gnssData);
-  gnssData.millisecond = myGNSS.getMillisecond(0);
-
-  gnssData.fixType = myGNSS.getFixType(0);
-  gnssData.hdop = myGNSS.getHorizontalDOP(0) * 0.01f;
-  gnssData.pdop = myGNSS.getPositionDOP(0) * 0.01f;
-  gnssData.vel = myGNSS.getGroundSpeed(0) * 0.0036f; // mm/s -> km/h
-
-  gnssData.isFixOk = myGNSS.getGnssFixOk(0);
-}
-
-/** 
- * @brief set JST time for gnssData from UTC unix time
- * 
- */
-
-static void setJstTimeFromUTCUnixTime(time_t utcTime, GNSS_DATA &_gnssData)
-{
-  utcTime += 9 * 3600;
-  struct tm *jstTime = gmtime(&utcTime);
-  _gnssData.year = jstTime->tm_year + 1900;
-  _gnssData.month = jstTime->tm_mon + 1;
-  _gnssData.day = jstTime->tm_mday;
-  _gnssData.hour = jstTime->tm_hour;
-  _gnssData.minute = jstTime->tm_min;
-  _gnssData.second = jstTime->tm_sec;
-}
-
-/**
- * @brief update M5 LCD
- *
- */
-static void updateDisplay()
-{
-  // tempolary
-  M5.Lcd.fillScreen(BLACK);
-  M5.Lcd.setTextColor(WHITE);
-  M5.Lcd.setTextSize(1);
-  M5.Lcd.setCursor(0, 0);
-
-  if (isGpsOk && isSdCardOk && batVoltage > 3.6f)
-  {
-    M5.Lcd.printf("Status : ");
-    M5.Lcd.setTextColor(M5.Lcd.color565(0, 255, 0));
-    M5.Lcd.printf("Recording\r\n");
-  }
-  else
-  {
-    M5.Lcd.printf("Status : ");
-    M5.Lcd.setTextColor(M5.Lcd.color565(255, 0, 0));
-    M5.Lcd.printf("Stop\r\n");
-  }
-  M5.Lcd.setTextColor(M5.Lcd.color565(255, 255, 255));
-
-  // display
-  M5.Lcd.printf("Satellites: %d\n", gnssData.siv);
-  M5.Lcd.printf("hdop: %.2f\n", gnssData.hdop);
-  M5.Lcd.printf("pdop: %.2f\n", gnssData.pdop);
-
-  M5.Lcd.printf("isFixOK: %d\n",gnssData.isFixOk);
-  M5.Lcd.printf("fixtype: %d\n",gnssData.fixType);
-
-  M5.Lcd.printf("Lat: %.6f\n", gnssData.lat);
-  M5.Lcd.printf("Lon: %.6f\n", gnssData.lng);
-
-  M5.Lcd.printf("Alt: %.6f\n", gnssData.alt);
-  M5.Lcd.printf("Vel: %.1f\n", gnssData.vel);
-
-  M5.Lcd.printf("DT: %04d/%02d/%02d_%02d%02d%02d\n", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
-  M5.Lcd.printf("BAT: %.2f\n", batVoltage);
-}
-
-/**
- * @brief data write to SD card
- *
- */
-static void gnssDataWriteToSd()
-{
-
-  if (!isSDCardReady())
-  {
-    return;
-  }
-
-
-  char datetimeUtc[32]; // TODO: UTC->JST convert
-  sprintf(datetimeUtc, "%04d/%02d/%02d,%02d:%02d:%02d", gnssData.year, gnssData.month, gnssData.day, gnssData.hour, gnssData.minute, gnssData.second);
-  char lineStr[128];
-  sprintf(lineStr, "%s,%lf,%lf,%.1f,%.1f,%d,%2f", datetimeUtc, gnssData.lat, gnssData.lng, gnssData.alt, gnssData.vel, gnssData.siv, gnssData.hdop);
-  
-  // raw data for post process
-  file = SD.open(fileRawDataName, FILE_APPEND);
-  file.println(lineStr);
-  file.close();
-
-  if (!isGpsValid())
-  {
-    return;
-  }
-
-  // only valid data.
-  file = SD.open(fileName, FILE_APPEND);
-  file.println(lineStr);
-  file.close();
-
-}
-
-/**
- * @brief check GPS status and judge valid or not
- *
- */
-static bool isGpsValid()
-{
-  static uint32_t recover_buffer_time_anchor = millis();
-
-  // TODO add anti-chattering, anti_unstable_position method
-
-  if (gnssData.hdop > 6.0f)
-  { // tmp
-    recover_buffer_time_anchor = millis();
-    return false;
-  }
-  if (gnssData.siv < 5)
-  { // tmp
-    recover_buffer_time_anchor = millis();
-    return false;
-  }
-  if(gnssData.isFixOk != true){
-    return false;
-  }
-
-  if (fabs(gnssData.lat) < 0.001f)
-  {
-    // recover_buffer_time_anchor = millis();
-    return false;
-  }
-  if (fabs(gnssData.lng) < 0.001f)
-  {
-    // recover_buffer_time_anchor = millis();
-    return false;
-  }
-
-  // // position info is unstable when recover
-  if (millis() - recover_buffer_time_anchor < 5000)
-  {
-    return false;
-  }
-
-  return true;
-}
-
-/**
- * @brief check SDCard is empty or not
- *
- */
-static bool isSDCardReady()
-{
-  sdcard_type_t Type = SD.cardType();
-  if (Type == CARD_UNKNOWN || Type == CARD_NONE)
-  {
-    return false;
-  }
-  return true;
 }

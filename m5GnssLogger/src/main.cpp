@@ -40,7 +40,7 @@ static void vibrationProcess();
 static void vibration(uint32_t ms) {
   vibEndTimeMillis = millis() + ms;
   vibFlag = true;
-  M5.Axp.SetLDOEnable(3, true); 
+  M5.Axp.SetLDOEnable(3, true);
 }
 
 /**
@@ -53,15 +53,15 @@ static void vibrationProcess() {
 
   if (millis() >= vibEndTimeMillis) {
     vibFlag = false;
-    M5.Axp.SetLDOEnable(3, false); // 振動モーターをOFF
+    M5.Axp.SetLDOEnable(3, false);  // 振動モーターをOFF
   }
 }
 
 void setup() {
   M5.begin(true, true, true, true);
   displayModule.begin();
-  Serial2.begin(38400, SERIAL_8N1, 13, 14); // NEO_M9N用
-  
+  Serial2.begin(38400, SERIAL_8N1, 13, 14);  // NEO_M9N用
+
   displayModule.showMessage("Initializing...\n");
 
   // GNSSモジュール初期化
@@ -79,23 +79,29 @@ void setup() {
   do {
     gnssModule.update();
     gnssModule.getData(gnssData);
-    
+
     displayModule.showMessage("Waiting for receive Time Signal...\n");
     displayModule.showMessage("DT: ");
     char timeStr[64];
-    sprintf(timeStr, "%04d/%02d/%02d_%02d%02d%02d\n", 
-            gnssData.year, gnssData.month, gnssData.day, 
-            gnssData.hour, gnssData.minute, gnssData.second);
+    sprintf(timeStr,
+            "%04d/%02d/%02d_%02d%02d%02d\n",
+            gnssData.year,
+            gnssData.month,
+            gnssData.day,
+            gnssData.hour,
+            gnssData.minute,
+            gnssData.second);
     displayModule.showMessage(timeStr);
-    
+
     delay(1000);
     displayModule.clear();
-  } while (!(gnssData.timeValid && gnssData.dateValid && 
-            (gnssData.second != 0) && (gnssData.day != 0)));
+  } while (
+      !(gnssData.timeValid && gnssData.dateValid && (gnssData.second != 0) && (gnssData.day != 0)));
 
   // ファイル名生成（グローバル変数を使用）
   StorageModule::generateFileName("gnss_csv_data", fileName, sizeof(fileName), gnssData, false);
-  StorageModule::generateFileName("gnss_csv_data", fileRawDataName, sizeof(fileRawDataName), gnssData, true);
+  StorageModule::generateFileName(
+      "gnss_csv_data", fileRawDataName, sizeof(fileRawDataName), gnssData, true);
 
   // SDカード初期化
   if (!storageModule.begin()) {
@@ -107,7 +113,7 @@ void setup() {
   // ヘッダー書き込み（両方のファイルに）
   storageModule.writeHeader(fileName);
   storageModule.writeHeader(fileRawDataName);
-  
+
   // 初期データ書き込み
   storageModule.writeData(gnssData, fileName);
   storageModule.writeRawData(gnssData, fileRawDataName);
@@ -118,11 +124,11 @@ void setup() {
     char satStr[32];
     sprintf(satStr, "Satellites: %d (>= 7)\n", gnssData.siv);
     displayModule.showMessage(satStr);
-    
+
     gnssModule.update();
     gnssModule.getData(gnssData);
     isGpsOk = gnssModule.isValid(gnssData);
-    
+
     delay(500);
     displayModule.clear();
   } while ((!isGpsOk) && (gnssData.siv < 7));
@@ -136,7 +142,7 @@ void loop() {
     M5.update();
     gnssModule.update();
     gnssModule.getData(gnssData);
-    
+
     batVoltage = axp192.GetBatVoltage();
     isGpsOk = gnssModule.isValid(gnssData);
     isSdCardOk = storageModule.isReady();

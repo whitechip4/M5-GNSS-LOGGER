@@ -31,7 +31,7 @@ public:
    * @param fileName ファイル名
    * @return 成功時true
    */
-  bool writeHeader(const char *fileName);
+  bool writeHeader(const char* fileName);
 
   /**
    * @brief GNSSデータを書き込み
@@ -39,7 +39,7 @@ public:
    * @param fileName ファイル名
    * @return 成功時true
    */
-  bool writeData(const GNSS_DATA &data, const char *fileName);
+  bool writeData(const GNSS_DATA& data, const char* fileName);
 
   /**
    * @brief 生データを書き込み
@@ -47,7 +47,7 @@ public:
    * @param fileName ファイル名
    * @return 成功時true
    */
-  bool writeRawData(const GNSS_DATA &data, const char *fileName);
+  bool writeRawData(const GNSS_DATA& data, const char* fileName);
 
   /**
    * @brief ファイル名を生成（日時ベース）
@@ -57,17 +57,20 @@ public:
    * @param data 日時データ
    * @param isRaw 生データ用かどうか
    */
-  static void generateFileName(const char *baseName, char *buffer, size_t bufferSize, 
-                              const GNSS_DATA &data, bool isRaw = false);
+  static void generateFileName(const char* baseName,
+                               char* buffer,
+                               size_t bufferSize,
+                               const GNSS_DATA& data,
+                               bool isRaw = false);
 
 private:
   File _file;
-  
+
   /**
    * @brief ヘッダーを書き込み
    * @param file ファイルオブジェクト
    */
-  void _writeHeader(File &file);
+  void _writeHeader(File& file);
 };
 
-#endif // STORAGE_H
+#endif  // STORAGE_H

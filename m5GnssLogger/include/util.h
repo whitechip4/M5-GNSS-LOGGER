@@ -16,4 +16,4 @@ void vibration(uint32_t ms);
  */
 void vibrationProcess();
 
-#endif // UTIL_H
+#endif  // UTIL_H

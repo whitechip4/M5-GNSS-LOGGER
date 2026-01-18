@@ -1,15 +1,16 @@
 #include "gnss.h"
 #include <time.h>
 
-GnssModule::GnssModule(HardwareSerial &serial) 
-  : _serial(serial), _recoveryBufferTimeAnchor(0) {
+GnssModule::GnssModule(HardwareSerial& serial)
+    : _serial(serial)
+    , _recoveryBufferTimeAnchor(0) {
 }
 
 bool GnssModule::begin() {
   if (!_gnss.begin(_serial)) {
     return false;
   }
-  
+
   _gnss.factoryDefault();
   delay(5000);
 
@@ -30,7 +31,7 @@ void GnssModule::update() {
   _gnss.checkUblox();
 }
 
-void GnssModule::getData(GNSS_DATA &data) {
+void GnssModule::getData(GNSS_DATA& data) {
   data.siv = _gnss.getSIV(1);
   data.latRaw = _gnss.getLatitude(0);
   data.lngRaw = _gnss.getLongitude(0);
@@ -49,12 +50,12 @@ void GnssModule::getData(GNSS_DATA &data) {
   data.fixType = _gnss.getFixType(0);
   data.hdop = _gnss.getHorizontalDOP(0) * 0.01f;
   data.pdop = _gnss.getPositionDOP(0) * 0.01f;
-  data.vel = _gnss.getGroundSpeed(0) * 0.0036f; // mm/s -> km/h
+  data.vel = _gnss.getGroundSpeed(0) * 0.0036f;  // mm/s -> km/h
 
   data.isFixOk = _gnss.getGnssFixOk(0);
 }
 
-bool GnssModule::isValid(const GNSS_DATA &data) {
+bool GnssModule::isValid(const GNSS_DATA& data) {
   // TODO: チャタリング防止、不安定位置防止メソッドを追加
 
   if (data.hdop > GNSS_HDOP_THRESHOLD) {
@@ -84,10 +85,10 @@ bool GnssModule::isValid(const GNSS_DATA &data) {
   return true;
 }
 
-void GnssModule::_setJstTimeFromUTCUnixTime(time_t utcTime, GNSS_DATA &data) {
+void GnssModule::_setJstTimeFromUTCUnixTime(time_t utcTime, GNSS_DATA& data) {
   utcTime += UTC_TIME_OFFSET_HOURS * 3600;
 
-  struct tm *localTime = gmtime(&utcTime);
+  struct tm* localTime = gmtime(&utcTime);
   data.year = localTime->tm_year + 1900;
   data.month = localTime->tm_mon + 1;
   data.day = localTime->tm_mday;

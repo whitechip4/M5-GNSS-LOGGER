@@ -7,16 +7,15 @@
 /**
  * @brief GNSSデータ構造体
  */
-typedef struct
-{
-  uint8_t siv; // sattellites number in view
+typedef struct {
+  uint8_t siv;  // sattellites number in view
   int32_t latRaw;
   int32_t lngRaw;
-  double lat; // doubleはM5Stack Core2では32bit...
+  double lat;  // doubleはM5Stack Core2では32bit...
   double lng;
 
-  double alt; // [m]
-  float vel;  // [km/h]
+  double alt;  // [m]
+  float vel;   // [km/h]
 
   bool dateValid;
   uint16_t year;
@@ -29,7 +28,7 @@ typedef struct
   uint16_t second;
   uint16_t millisecond;
 
-  uint8_t fixType; // 0=no fix, 1=dead reckoning, 2=2D, 3=3D, 4=GNSS, 5=Time fix
+  uint8_t fixType;  // 0=no fix, 1=dead reckoning, 2=2D, 3=3D, 4=GNSS, 5=Time fix
   float hdop;
   float pdop;
 
@@ -65,4 +64,4 @@ typedef enum {
   DISPLAY_MODE_SIMPLE = 1
 } DISPLAY_MODE;
 
-#endif // CONFIG_H
+#endif  // CONFIG_H

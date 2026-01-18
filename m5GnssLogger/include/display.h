@@ -27,8 +27,11 @@ public:
    * @param isSdCardOk SDカード状態
    * @param mode 表示モード
    */
-  void update(const GNSS_DATA &data, float batteryVoltage, 
-              bool isGpsOk, bool isSdCardOk, DISPLAY_MODE mode);
+  void update(const GNSS_DATA& data,
+              float batteryVoltage,
+              bool isGpsOk,
+              bool isSdCardOk,
+              DISPLAY_MODE mode);
 
   /**
    * @brief クリア
@@ -39,19 +42,18 @@ public:
    * @brief メッセージ表示
    * @param message 表示するメッセージ
    */
-  void showMessage(const char *message);
+  void showMessage(const char* message);
 
 private:
   /**
    * @brief 詳細モードで表示
    */
-  void _showDetailMode(const GNSS_DATA &data, float batteryVoltage, 
-                       bool isGpsOk, bool isSdCardOk);
+  void _showDetailMode(const GNSS_DATA& data, float batteryVoltage, bool isGpsOk, bool isSdCardOk);
 
   /**
    * @brief シンプルモードで表示
    */
-  void _showSimpleMode(const GNSS_DATA &data);
+  void _showSimpleMode(const GNSS_DATA& data);
 };
 
-#endif // DISPLAY_H
+#endif  // DISPLAY_H

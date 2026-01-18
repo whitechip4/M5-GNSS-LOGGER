@@ -46,12 +46,19 @@ typedef struct
 #define GNSS_POSITION_THRESHOLD 0.001f
 
 /**
- * @brief battery voltage threshold for recording
+ * @brief バッテリー設定
  */
 #define BATTERY_VOLTAGE_THRESHOLD 3.6f
 
 /**
- * @brief Display modes
+ * @brief UTC時差設定（時間単位）
+ * 日本標準時: +9
+ * 台湾時間: +8
+ */
+#define UTC_TIME_OFFSET_HOURS 8
+
+/**
+ * @brief 表示モード
  */
 typedef enum {
   DISPLAY_MODE_DETAIL = 0,

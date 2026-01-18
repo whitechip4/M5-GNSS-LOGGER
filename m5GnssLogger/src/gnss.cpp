@@ -85,14 +85,13 @@ bool GnssModule::isValid(const GNSS_DATA &data) {
 }
 
 void GnssModule::_setJstTimeFromUTCUnixTime(time_t utcTime, GNSS_DATA &data) {
-  // utcTime += 9 * 3600; // JST
-  utcTime += 8 * 3600;  // 一時的に台湾時間
+  utcTime += UTC_TIME_OFFSET_HOURS * 3600;
 
-  struct tm *jstTime = gmtime(&utcTime);
-  data.year = jstTime->tm_year + 1900;
-  data.month = jstTime->tm_mon + 1;
-  data.day = jstTime->tm_mday;
-  data.hour = jstTime->tm_hour;
-  data.minute = jstTime->tm_min;
-  data.second = jstTime->tm_sec;
+  struct tm *localTime = gmtime(&utcTime);
+  data.year = localTime->tm_year + 1900;
+  data.month = localTime->tm_mon + 1;
+  data.day = localTime->tm_mday;
+  data.hour = localTime->tm_hour;
+  data.minute = localTime->tm_min;
+  data.second = localTime->tm_sec;
 }

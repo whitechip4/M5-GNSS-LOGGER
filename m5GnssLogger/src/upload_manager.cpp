@@ -153,8 +153,8 @@ bool UploadManager::_uploadToR2() {
 
     Serial.printf("[UPLOAD] Uploading: %s -> %s\r\n", filename, remoteKey);
 
-    // アップロード試行
-    if (_r2.uploadFile(filename, remoteKey)) {
+    // アップロード試行（ストリーミング版を使用）
+    if (_r2.uploadFileStream(filename, remoteKey)) {
       // 成功したらキューから削除
       _storage.removeFileFromUploadList(filename);
       uploadedCount++;

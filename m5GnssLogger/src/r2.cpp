@@ -97,6 +97,100 @@ bool R2Module::uploadFile(const char* localFilePath, const char* remoteKey) {
   return result;
 }
 
+bool R2Module::uploadFileStream(const char* localFilePath, const char* remoteKey) {
+  displayModule.showMessage("Preparing upload...\n");
+  Serial.printf("[R2] Opening file: %s\r\n", localFilePath);
+
+  File file = SD.open(localFilePath, FILE_READ);
+  if (!file) {
+    displayModule.showMessage("File not found\n");
+    Serial.println("[R2] File not found!");
+    return false;
+  }
+
+  size_t fileSize = file.size();
+  Serial.printf("[R2] File size: %u bytes\r\n", fileSize);
+  if (fileSize == 0) {
+    displayModule.showMessage("Empty file\n");
+    Serial.println("[R2] Empty file!");
+    file.close();
+    return false;
+  }
+
+  displayModule.showMessage("Uploading to R2...\n");
+  bool result = _uploadStreamData(file, fileSize, remoteKey);
+
+  file.close();
+  return result;
+}
+
+bool R2Module::_uploadStreamData(Stream& stream, size_t dataSize, const char* remoteKey) {
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  // Parse host from endpoint
+  String endpoint = String(_endpoint);
+  String host = endpoint.substring(8);  // Remove "https://"
+  int pathStart = host.indexOf('/');
+  if (pathStart >= 0) {
+    host = host.substring(0, pathStart);
+  }
+
+  // Build full URI (path only, without host)
+  String uri = "/" + String(_bucketName) + "/" + String(remoteKey);
+
+  // Create HTTP request
+  HTTPClient http;
+  http.begin(client, host, 443, uri, true);
+
+  // Use UNSIGNED-PAYLOAD for streaming (no pre-calculated hash needed)
+  String payloadHash = "UNSIGNED-PAYLOAD";
+  Serial.printf("[R2] Using UNSIGNED-PAYLOAD for streaming\r\n");
+
+  // Get current timestamp
+  time_t now = time(nullptr);
+  struct tm timeinfo;
+  gmtime_r(&now, &timeinfo);
+  char timestamp[17];
+  strftime(timestamp, sizeof(timestamp), "%Y%m%dT%H%M%SZ", &timeinfo);
+  char dateStamp[9];
+  strftime(dateStamp, sizeof(dateStamp), "%Y%m%d", &timeinfo);
+  Serial.printf("[R2] Timestamp: %s\r\n", timestamp);
+
+  // Generate authorization header with UNSIGNED-PAYLOAD
+  String authHeader = _generateSignature(
+      "PUT", remoteKey, host.c_str(), _region, "s3", timestamp, payloadHash.c_str());
+
+  // Set headers
+  http.addHeader("Host", host);
+  http.addHeader("Content-Type", "text/csv");
+  http.addHeader("x-amz-content-sha256", payloadHash);
+  http.addHeader("x-amz-date", timestamp);
+  http.addHeader("Authorization", authHeader);
+
+  // Send PUT request with streaming - HTTPClient will read in chunks
+  Serial.printf("[R2] Starting streaming upload of %u bytes\r\n", dataSize);
+  int httpCode = http.sendRequest("PUT", &stream, dataSize);
+  Serial.printf("[R2] HTTP response code: %d\r\n", httpCode);
+
+  // Check response
+  bool success = (httpCode == 200);
+
+  if (success) {
+    displayModule.showMessage("Upload successful!\n");
+    Serial.println("[R2] Upload successful!");
+  } else {
+    String response = http.getString();
+    displayModule.showMessage("Upload failed\n");
+    Serial.printf("[R2] Upload failed - Code: %d, Response: %s\r\n", httpCode, response.c_str());
+  }
+
+  http.end();
+  delay(1000);
+
+  return success;
+}
+
 bool R2Module::uploadData(const char* data, size_t dataSize, const char* remoteKey) {
   displayModule.showMessage("Uploading to R2...\n");
 

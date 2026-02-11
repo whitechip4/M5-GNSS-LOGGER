@@ -43,6 +43,14 @@ public:
   bool uploadFile(const char* localFilePath, const char* remoteKey);
 
   /**
+   * @brief ファイルをR2にストリーミングアップロード（メモリ効率）
+   * @param localFilePath SDカード上のローカルファイルパス
+   * @param remoteKey R2上のキー（パス）
+   * @return アップロード成功時true
+   */
+  bool uploadFileStream(const char* localFilePath, const char* remoteKey);
+
+  /**
    * @brief ファイルをR2にアップロード（文字列データ）
    * @param data アップロードするデータ
    * @param dataSize データサイズ
@@ -84,6 +92,15 @@ private:
    * @brief R2エンドポイントURLを生成
    */
   void _buildEndpoint();
+
+  /**
+   * @brief ストリーミングアップロード実装
+   * @param stream データストリーム（Fileなど）
+   * @param dataSize データサイズ
+   * @param remoteKey R2上のキー（パス）
+   * @return アップロード成功時true
+   */
+  bool _uploadStreamData(Stream& stream, size_t dataSize, const char* remoteKey);
 
 #ifndef TESTING
   /**

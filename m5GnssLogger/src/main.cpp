@@ -31,6 +31,57 @@ DISPLAY_MODE viewMode = DISPLAY_MODE_DETAIL;
 char fileName[64] = "";
 char fileRawDataName[128] = "";
 
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/**
+ * @brief UTC時刻のtm構造体をtime_tに変換
+ * @param tm UTC時刻のtm構造体
+ * @return Unixタイムスタンプ
+ *
+ * mktime()は入力をローカル時刻として扱うため、
+ * ESP32でUTCを扱う場合はこの関数を使用する
+ */
+time_t timegm_utc(struct tm* tm) {
+  int month = tm->tm_mon;
+  int year = tm->tm_year + 1900;
+
+  // 各月の積算日数（閏年対応は後で計算）
+  static const int days_in_month[] = {
+    0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334
+  };
+
+  // 1970年からの年数を計算
+  long days = (year - 1970) * 365L;
+
+  // 閏年の日数を加算
+  for (int y = 1970; y < year; y++) {
+    if ((y % 4 == 0 && y % 100 != 0) || (y % 400 == 0)) {
+      days += 1;
+    }
+  }
+
+  // 今年の経過日数を加算
+  days += days_in_month[month];
+
+  // 閏年で2月以降の場合は+1日
+  if (month > 1 && ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0))) {
+    days += 1;
+  }
+
+  // 日を加算
+  days += tm->tm_mday - 1;
+
+  // 秒数に変換
+  time_t result = days * 86400L;
+  result += tm->tm_hour * 3600L;
+  result += tm->tm_min * 60L;
+  result += tm->tm_sec;
+
+  return result;
+}
+
 void setup() {
   M5.begin(true, true, true, true);
   displayModule.begin();
@@ -132,12 +183,12 @@ void _stopRecording() {
       // WiFiに接続
       wifiModule.begin(wifiCfg->ssid, wifiCfg->password);
       if (wifiModule.connect(30000)) {
-        Serial.println("[MAIN] WiFi connected successfully");
+        Serial.printf("[MAIN] WiFi connected successfully\r\n");
 
         // NTPで時刻同期
-        configTime(TIMEZONE_OFFSET, 0, NTP_SERVER);
-        Serial.print("[MAIN] Syncing time with NTP server: ");
-        Serial.println(NTP_SERVER);
+        // タイムゾーンを0にしてシステム時刻をUTCにする
+        configTime(0, 0, NTP_SERVER);
+        Serial.printf("[MAIN] Syncing time with NTP server: %s\r\n", NTP_SERVER);
 
         // NTP同期を待機（最大10秒）
         int ntpTries = 0;
@@ -156,33 +207,38 @@ void _stopRecording() {
           gmtime_r(&now, &timeinfo);
           char timeStr[64];
           strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S UTC", &timeinfo);
-          Serial.printf("[MAIN] NTP sync successful: %s\n", timeStr);
+          Serial.printf("[MAIN] NTP sync successful: %s\r\n", timeStr);
         } else {
-          Serial.println("[MAIN] NTP sync failed, using GPS time");
+          Serial.printf("[MAIN] NTP sync failed, using GPS time\r\n");
           // GPS時刻をシステム時刻に設定（フォールバック）
+          // gnssDataはローカル時刻（UTC_TIME_OFFSET_HOURSが加算済み）
+          // UTCに戻すために、タイムゾーンオフセットを引く
           struct tm gpsTime;
           gpsTime.tm_year = gnssData.year - 1900;
           gpsTime.tm_mon = gnssData.month - 1;
           gpsTime.tm_mday = gnssData.day;
-          gpsTime.tm_hour = gnssData.hour;
+          gpsTime.tm_hour = gnssData.hour - UTC_TIME_OFFSET_HOURS;  // ローカル→UTC
           gpsTime.tm_min = gnssData.minute;
           gpsTime.tm_sec = gnssData.second;
+          // システムタイムゾーンはUTC(0)なのでmktimeでOK
           time_t gpsTimeVal = mktime(&gpsTime);
           struct timeval tv = {gpsTimeVal, 0};
           settimeofday(&tv, nullptr);
 
+          // ログ出力用に元のローカル時刻を復元
+          gpsTime.tm_hour = gnssData.hour;
           char timeStr[64];
           strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S UTC", &gpsTime);
-          Serial.printf("[MAIN] Using GPS time: %s\n", timeStr);
+          Serial.printf("[MAIN] Using GPS time: %s\r\n", timeStr);
         }
 
         // R2設定があればアップロード
         if (AppConfig::isR2Configured()) {
           const auto* r2Cfg = AppConfig::getR2Config();
-          Serial.printf("[MAIN] R2 Account ID: %s\n", r2Cfg->accountId);
-          Serial.printf("[MAIN] R2 Bucket: %s\n", r2Cfg->bucketName);
-          Serial.printf("[MAIN] R2 Region: %s\n", r2Cfg->region);
-          Serial.printf("[MAIN] R2 Access Key length: %d\n", strlen(r2Cfg->accessKey));
+          Serial.printf("[MAIN] R2 Account ID: %s\r\n", r2Cfg->accountId);
+          Serial.printf("[MAIN] R2 Bucket: %s\r\n", r2Cfg->bucketName);
+          Serial.printf("[MAIN] R2 Region: %s\r\n", r2Cfg->region);
+          Serial.printf("[MAIN] R2 Access Key length: %d\r\n", strlen(r2Cfg->accessKey));
           r2Module.begin(r2Cfg->accountId, r2Cfg->bucketName, r2Cfg->accessKey, r2Cfg->secretKey, r2Cfg->region);
 
           // CSVファイルをアップロード

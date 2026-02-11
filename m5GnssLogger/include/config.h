@@ -54,7 +54,7 @@ typedef struct {
  * 日本標準時: +9
  * 台湾時間: +8
  */
-#define UTC_TIME_OFFSET_HOURS 8
+#define UTC_TIME_OFFSET_HOURS 9
 
 /**
  * @brief NTPサーバー設定

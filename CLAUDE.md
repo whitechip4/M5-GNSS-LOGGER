@@ -21,7 +21,7 @@ cd m5GnssLogger
 pio pkg install
 
 # Build 
-pio run 
+pio run --environment m5stack-core2
 
 # Upload
 pio run --target upload --environment m5stack-core2 

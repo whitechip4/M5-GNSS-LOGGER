@@ -57,6 +57,15 @@ typedef struct {
 #define UTC_TIME_OFFSET_HOURS 8
 
 /**
+ * @brief NTPサーバー設定
+ */
+#define NTP_SERVER  "amazon.pool.ntp.org"  // AWS公開NTP
+#define NTP_TIMEOUT  10000  // 10秒
+
+// タイムゾーン（日本時間: UTC+9 = 9時間 = 32400秒）
+#define TIMEZONE_OFFSET  32400
+
+/**
  * @brief 表示モード
  */
 typedef enum {

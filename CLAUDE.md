@@ -20,8 +20,11 @@ cd m5GnssLogger
 # Install dependencies
 pio pkg install
 
-# Build and upload to device
-pio run --target upload
+# Build 
+pio run 
+
+# Upload
+pio run --target upload --environment m5stack-core2 
 
 # Monitor serial output (for debugging)
 pio device monitor

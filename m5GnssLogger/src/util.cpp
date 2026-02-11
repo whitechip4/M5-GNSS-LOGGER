@@ -27,3 +27,11 @@ void vibrationProcess() {
     M5.Axp.SetLDOEnable(3, false);  // 振動モーターをOFF
   }
 }
+
+/**
+ * @brief 振動を即座に停止
+ */
+void stopVibration() {
+  vibFlag = false;
+  M5.Axp.SetLDOEnable(3, false);  // 振動モーターをOFF
+}

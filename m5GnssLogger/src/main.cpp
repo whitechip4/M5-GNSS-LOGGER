@@ -169,43 +169,106 @@ void _stopRecording() {
   isRecording = false;
   displayModule.clear();
   displayModule.showMessage("Recording stopped\n");
+  Serial.println("[MAIN] Recording stopped");
   delay(1000);
 
   // WiFi設定があれば、指定SSIDを検索してアップロード
   if (strlen(wifiSsid) > 0) {
+    Serial.printf("[MAIN] WiFi SSID configured: %s\n", wifiSsid);
     displayModule.showMessage("Checking WiFi...\n");
-    
+
     if (wifiModule.isSSIDAvailable(wifiSsid)) {
       displayModule.showMessage("WiFi found!\n");
+      Serial.println("[MAIN] WiFi network found, attempting connection...");
       delay(1000);
-      
+
       // WiFiに接続
       wifiModule.begin(wifiSsid, wifiPassword);
       if (wifiModule.connect(30000)) {
+        Serial.println("[MAIN] WiFi connected successfully");
+
+        // NTPで時刻同期
+        configTime(TIMEZONE_OFFSET, 0, NTP_SERVER);
+        Serial.print("[MAIN] Syncing time with NTP server: ");
+        Serial.println(NTP_SERVER);
+
+        // NTP同期を待機（最大10秒）
+        int ntpTries = 0;
+        time_t now = time(nullptr);
+        while (now < 1000000000 && ntpTries < 20) {  // 2001年以降なら成功
+          delay(500);
+          now = time(nullptr);
+          ntpTries++;
+        }
+
+        // NTP同期完了後に追加で5秒待つ（ESP32のNTP同期処理完了を待つ）
+        delay(5000);
+
+        if (now >= 1000000000) {
+          struct tm timeinfo;
+          gmtime_r(&now, &timeinfo);
+          char timeStr[64];
+          strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S UTC", &timeinfo);
+          Serial.printf("[MAIN] NTP sync successful: %s\n", timeStr);
+        } else {
+          Serial.println("[MAIN] NTP sync failed, using GPS time");
+          // GPS時刻をシステム時刻に設定（フォールバック）
+          struct tm gpsTime;
+          gpsTime.tm_year = gnssData.year - 1900;
+          gpsTime.tm_mon = gnssData.month - 1;
+          gpsTime.tm_mday = gnssData.day;
+          gpsTime.tm_hour = gnssData.hour;
+          gpsTime.tm_min = gnssData.minute;
+          gpsTime.tm_sec = gnssData.second;
+          time_t gpsTimeVal = mktime(&gpsTime);
+          struct timeval tv = { gpsTimeVal, 0 };
+          settimeofday(&tv, nullptr);
+
+          char timeStr[64];
+          strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S UTC", &gpsTime);
+          Serial.printf("[MAIN] Using GPS time: %s\n", timeStr);
+        }
+
         // R2設定があればアップロード
         if (strlen(r2AccountId) > 0 && strlen(r2AccessKey) > 0) {
+          Serial.printf("[MAIN] R2 Account ID: %s\n", r2AccountId);
+          Serial.printf("[MAIN] R2 Bucket: %s\n", r2BucketName);
+          Serial.printf("[MAIN] R2 Region: %s\n", r2Region);
+          Serial.printf("[MAIN] R2 Access Key length: %d\n", strlen(r2AccessKey));
           r2Module.begin(r2AccountId, r2BucketName, r2AccessKey, r2SecretKey, r2Region);
-          
+
           // CSVファイルをアップロード
           char remoteKey[256];
           R2Module::generateKey("gnss_csv_data", remoteKey, sizeof(remoteKey), gnssData);
-          
+          Serial.printf("[MAIN] Uploading regular CSV file: %s\n", fileName);
+          Serial.printf("[MAIN] Remote key: %s\n", remoteKey);
+
           if (r2Module.uploadFile(fileName, remoteKey)) {
             displayModule.showMessage("CSV uploaded!\n");
+            Serial.println("[MAIN] Regular CSV upload successful!");
             delay(1000);
+          } else {
+            Serial.println("[MAIN] Regular CSV upload failed!");
           }
-          
+
           // Raw CSVファイルもアップロード
           R2Module::generateKey("gnss_csv_data", remoteKey, sizeof(remoteKey), gnssData);
           size_t keyLen = strlen(remoteKey);
           snprintf(remoteKey + keyLen - 4, sizeof(remoteKey) - keyLen + 4, "_raw.csv");
-          
+          Serial.printf("[MAIN] Uploading raw CSV file: %s\n", fileRawDataName);
+          Serial.printf("[MAIN] Remote key: %s\n", remoteKey);
+
           if (r2Module.uploadFile(fileRawDataName, remoteKey)) {
             displayModule.showMessage("Raw CSV uploaded!\n");
+            Serial.println("[MAIN] Raw CSV upload successful!");
             delay(1000);
+          } else {
+            Serial.println("[MAIN] Raw CSV upload failed!");
           }
+        } else {
+          Serial.println("[MAIN] R2 credentials not configured, skipping upload");
         }
-        
+
         // WiFi切断
         wifiModule.disconnect();
         displayModule.showMessage("WiFi disconnected\n");
@@ -213,11 +276,15 @@ void _stopRecording() {
       }
     } else {
       displayModule.showMessage("WiFi not found\n");
+      Serial.println("[MAIN] WiFi network not found");
       delay(2000);
     }
+  } else {
+    Serial.println("[MAIN] WiFi SSID not configured, skipping upload");
   }
 
   displayModule.showMessage("Data saved to SD\n");
+  Serial.println("[MAIN] Data saved to SD card");
   delay(2000);
 }
 
@@ -272,6 +339,7 @@ void loop() {
 
       while (millis() - confirmStart < 10000) {  // 10秒間待機
         M5.update();
+        vibrationProcess();
 
         if (M5.BtnB.wasPressed()) {
           confirmed = true;
@@ -289,10 +357,12 @@ void loop() {
       }
 
       if (confirmed) {
+        stopVibration();  // 振動を停止してからアップロード処理へ
         _stopRecording();
       } else {
         displayModule.clear();
         vibration(200);
+        stopVibration();  // 振動を即座に停止
       }
     }
 

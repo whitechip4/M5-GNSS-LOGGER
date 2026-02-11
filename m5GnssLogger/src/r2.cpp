@@ -50,25 +50,31 @@ void R2Module::_buildEndpoint() {
 
 bool R2Module::uploadFile(const char* localFilePath, const char* remoteKey) {
   displayModule.showMessage("Reading file...\n");
-  
+  Serial.printf("[R2] Opening file: %s\n", localFilePath);
+
   // Read file from SD card
   File file = SD.open(localFilePath, FILE_READ);
   if (!file) {
     displayModule.showMessage("File not found\n");
+    Serial.println("[R2] File not found!");
     return false;
   }
 
   size_t fileSize = file.size();
+  Serial.printf("[R2] File size: %u bytes\n", fileSize);
   if (fileSize == 0) {
     displayModule.showMessage("Empty file\n");
+    Serial.println("[R2] Empty file!");
     file.close();
     return false;
   }
 
   // Allocate buffer for file content
   char* buffer = (char*)malloc(fileSize + 1);
+  Serial.printf("[R2] Memory allocated: %u bytes\n", fileSize + 1);
   if (!buffer) {
     displayModule.showMessage("Memory error\n");
+    Serial.println("[R2] Memory allocation failed!");
     file.close();
     return false;
   }
@@ -77,8 +83,10 @@ bool R2Module::uploadFile(const char* localFilePath, const char* remoteKey) {
   size_t bytesRead = file.read((uint8_t*)buffer, fileSize);
   file.close();
 
+  Serial.printf("[R2] Bytes read: %u / %u\n", bytesRead, fileSize);
   if (bytesRead != fileSize) {
     displayModule.showMessage("Read error\n");
+    Serial.println("[R2] Read error!");
     free(buffer);
     return false;
   }
@@ -87,7 +95,7 @@ bool R2Module::uploadFile(const char* localFilePath, const char* remoteKey) {
 
   // Upload the data
   bool result = uploadData(buffer, bytesRead, remoteKey);
-  
+
   free(buffer);
   return result;
 }
@@ -115,6 +123,7 @@ bool R2Module::uploadData(const char* data, size_t dataSize, const char* remoteK
 
   // Calculate payload hash
   String payloadHash = _sha256(data, dataSize);
+  Serial.printf("[R2] Payload hash: %s\n", payloadHash.c_str());
 
   // Get current timestamp
   time_t now = time(nullptr);
@@ -124,6 +133,7 @@ bool R2Module::uploadData(const char* data, size_t dataSize, const char* remoteK
   strftime(timestamp, sizeof(timestamp), "%Y%m%dT%H%M%SZ", &timeinfo);
   char dateStamp[9];
   strftime(dateStamp, sizeof(dateStamp), "%Y%m%d", &timeinfo);
+  Serial.printf("[R2] Timestamp: %s\n", timestamp);
 
   // Generate authorization header
   String authHeader = _generateSignature("PUT",
@@ -142,15 +152,21 @@ bool R2Module::uploadData(const char* data, size_t dataSize, const char* remoteK
   http.addHeader("Authorization", authHeader);
 
   // Send PUT request
+  Serial.printf("[R2] Connecting to: %s\n", host.c_str());
+  Serial.printf("[R2] URI: %s\n", uri.c_str());
   int httpCode = http.PUT((uint8_t*)data, dataSize);
+  Serial.printf("[R2] HTTP response code: %d\n", httpCode);
 
   // Check response
   bool success = (httpCode == 200);
-  
+
   if (success) {
     displayModule.showMessage("Upload successful!\n");
+    Serial.println("[R2] Upload successful!");
   } else {
+    String response = http.getString();
     displayModule.showMessage("Upload failed\n");
+    Serial.printf("[R2] Upload failed - Code: %d, Response: %s\n", httpCode, response.c_str());
   }
 
   http.end();
@@ -188,24 +204,28 @@ String R2Module::_generateSignature(const char* method,
                                      const char* payloadHash) {
   // Create canonical request
   String canonicalUri = "/" + String(_bucketName) + "/" + String(key);
-  
+  Serial.printf("[R2] Canonical URI: %s\n", canonicalUri.c_str());
+
   String canonicalQueryString = "";
   String canonicalHeaders = "host:" + String(host) + "\n" +
                             "x-amz-content-sha256:" + String(payloadHash) + "\n" +
                             "x-amz-date:" + String(timestamp) + "\n";
   String signedHeaders = "host;x-amz-content-sha256;x-amz-date";
-  
+  Serial.printf("[R2] Canonical Headers: %s\n", canonicalHeaders.c_str());
+
   String canonicalRequest = String(method) + "\n" +
                            canonicalUri + "\n" +
                            canonicalQueryString + "\n" +
                            canonicalHeaders + "\n" +
                            signedHeaders + "\n" +
                            payloadHash;
+  Serial.printf("[R2] Canonical Request:\n%s\n", canonicalRequest.c_str());
 
   // Create string to sign
   String hashedCanonicalRequest = _sha256(canonicalRequest.c_str(),
                                            canonicalRequest.length());
-  
+  Serial.printf("[R2] Hashed Canonical Request: %s\n", hashedCanonicalRequest.c_str());
+
   // Get date stamp from timestamp
   char dateStamp[9];
   strncpy(dateStamp, timestamp, 8);
@@ -214,31 +234,43 @@ String R2Module::_generateSignature(const char* method,
   String credentialScope = String(dateStamp) + "/" +
                            String(region) + "/" +
                            String(service) + "/aws4_request";
-  
+  Serial.printf("[R2] Credential Scope: %s\n", credentialScope.c_str());
+
   String stringToSign = "AWS4-HMAC-SHA256\n" +
                        String(timestamp) + "\n" +
                        credentialScope + "\n" +
                        hashedCanonicalRequest;
+  Serial.printf("[R2] String to Sign (first 100 chars):\n%s\n",
+               stringToSign.substring(0, 100).c_str());
 
   // Calculate signature
-  // Derive signing key
+  // Derive signing key using binary HMAC
   String secretKeyStr = "AWS4" + String(_secretKey);
   const char* kSecret = secretKeyStr.c_str();
-  char kDate[32];
-  _hmacSha256(kSecret, strlen(kSecret), dateStamp, strlen(dateStamp), kDate);
-  
-  char kRegion[32];
-  _hmacSha256(kDate, 32, region, strlen(region), kRegion);
-  
-  char kService[32];
-  _hmacSha256(kRegion, 32, service, strlen(service), kService);
-  
-  char kSigning[32];
-  _hmacSha256(kService, 32, "aws4_request", 12, kSigning);
 
-  // Final signature
+  unsigned char kDate[32];
+  _hmacSha256Binary(kSecret, strlen(kSecret), dateStamp, strlen(dateStamp), kDate);
+
+  unsigned char kRegion[32];
+  _hmacSha256Binary((const char*)kDate, 32, region, strlen(region), kRegion);
+
+  unsigned char kService[32];
+  _hmacSha256Binary((const char*)kRegion, 32, service, strlen(service), kService);
+
+  unsigned char kSigning[32];
+  _hmacSha256Binary((const char*)kService, 32, "aws4_request", 12, kSigning);
+
+  // Final signature - compute binary then hex-encode
+  unsigned char signatureBinary[32];
+  _hmacSha256Binary((const char*)kSigning, 32, stringToSign.c_str(), stringToSign.length(),
+                    signatureBinary);
+
   char signatureHex[65];
-  _hmacSha256(kSigning, 32, stringToSign.c_str(), stringToSign.length(), signatureHex);
+  for (int i = 0; i < 32; i++) {
+    sprintf(signatureHex + (i * 2), "%02x", signatureBinary[i]);
+  }
+  signatureHex[64] = '\0';
+  Serial.printf("[R2] Calculated Signature: %s\n", signatureHex);
 
   // Build authorization header
   String authorizationHeader = "AWS4-HMAC-SHA256 Credential=" +
@@ -248,6 +280,7 @@ String R2Module::_generateSignature(const char* method,
                                signedHeaders + ", " +
                                "Signature=" +
                                String(signatureHex);
+  Serial.printf("[R2] Auth Header length: %d\n", authorizationHeader.length());
 
   return authorizationHeader;
 }
@@ -291,4 +324,19 @@ void R2Module::_hmacSha256(const char* key,
     sprintf(output + (i * 2), "%02x", hash[i]);
   }
   output[64] = '\0';
+}
+
+void R2Module::_hmacSha256Binary(const char* key,
+                                  size_t keyLen,
+                                  const char* data,
+                                  size_t dataLen,
+                                  unsigned char* output) {
+  mbedtls_md_hmac(
+    mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+    (const unsigned char*)key,
+    keyLen,
+    (const unsigned char*)data,
+    dataLen,
+    output
+  );
 }

@@ -16,4 +16,9 @@ void vibration(uint32_t ms);
  */
 void vibrationProcess();
 
+/**
+ * @brief 振動を即座に停止
+ */
+void stopVibration();
+
 #endif  // UTIL_H

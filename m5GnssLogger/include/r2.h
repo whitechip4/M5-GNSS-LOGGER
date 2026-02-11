@@ -121,6 +121,20 @@ private:
                    const char* data,
                    size_t dataLen,
                    char* output);
+
+  /**
+   * @brief HMAC-SHA256 computation returning binary data
+   * @param key HMAC key
+   * @param keyLen Length of key
+   * @param data Data to HMAC
+   * @param dataLen Length of data
+   * @param output Output buffer (must be 32 bytes)
+   */
+  void _hmacSha256Binary(const char* key,
+                         size_t keyLen,
+                         const char* data,
+                         size_t dataLen,
+                         unsigned char* output);
 };
 
 #endif  // R2_H

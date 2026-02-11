@@ -9,7 +9,6 @@
 m5GnssLogger/.env
 
 # Generated config files from .env
-m5GnssLogger/include/config_env.h
 m5GnssLogger/include/.env.h
 
 # Cloudflare Workers Environment Variables

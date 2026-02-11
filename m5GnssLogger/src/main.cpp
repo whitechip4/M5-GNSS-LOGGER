@@ -11,9 +11,6 @@
 #include "my_wifi.h"
 #include "r2.h"
 
-// Include configuration from .env.h file
-#include ".env.h"
-
 // グローバルインスタンス
 GnssModule gnssModule(Serial2);
 DisplayModule displayModule;
@@ -29,17 +26,6 @@ bool isGpsOk = false;
 bool isSdCardOk = false;
 bool isRecording = true;
 DISPLAY_MODE viewMode = DISPLAY_MODE_DETAIL;
-
-// 設定（.envから読み込む）
-char wifiSsid[64] = "";
-char wifiPassword[64] = "";
-char r2AccountId[64] = "";
-char r2BucketName[64] = "";
-char r2AccessKey[128] = "";
-char r2SecretKey[128] = "";
-char r2Region[32] = "auto";
-
-void _loadConfig();
 
 // ファイル名（setupで初期化）
 char fileName[64] = "";
@@ -122,47 +108,7 @@ void setup() {
   } while ((!isGpsOk) && (gnssData.siv < 7));
 
   // 設定を読み込む（.envファイルがない場合は空文字列のまま）
-  _loadConfig();
-}
-
-void _loadConfig() {
-  // Load settings from auto-generated config_env.h
-  // This file is generated from .env file during build
-
-#ifdef WIFI_SSID
-  strncpy(wifiSsid, WIFI_SSID, sizeof(wifiSsid) - 1);
-  wifiSsid[sizeof(wifiSsid) - 1] = '\0';
-#endif
-
-#ifdef WIFI_PASSWORD
-  strncpy(wifiPassword, WIFI_PASSWORD, sizeof(wifiPassword) - 1);
-  wifiPassword[sizeof(wifiPassword) - 1] = '\0';
-#endif
-
-#ifdef R2_ACCOUNT_ID
-  strncpy(r2AccountId, R2_ACCOUNT_ID, sizeof(r2AccountId) - 1);
-  r2AccountId[sizeof(r2AccountId) - 1] = '\0';
-#endif
-
-#ifdef R2_BUCKET_NAME
-  strncpy(r2BucketName, R2_BUCKET_NAME, sizeof(r2BucketName) - 1);
-  r2BucketName[sizeof(r2BucketName) - 1] = '\0';
-#endif
-
-#ifdef R2_ACCESS_KEY
-  strncpy(r2AccessKey, R2_ACCESS_KEY, sizeof(r2AccessKey) - 1);
-  r2AccessKey[sizeof(r2AccessKey) - 1] = '\0';
-#endif
-
-#ifdef R2_SECRET_KEY
-  strncpy(r2SecretKey, R2_SECRET_KEY, sizeof(r2SecretKey) - 1);
-  r2SecretKey[sizeof(r2SecretKey) - 1] = '\0';
-#endif
-
-#ifdef R2_REGION
-  strncpy(r2Region, R2_REGION, sizeof(r2Region) - 1);
-  r2Region[sizeof(r2Region) - 1] = '\0';
-#endif
+  AppConfig::loadConfig();
 }
 
 void _stopRecording() {
@@ -173,17 +119,18 @@ void _stopRecording() {
   delay(1000);
 
   // WiFi設定があれば、指定SSIDを検索してアップロード
-  if (strlen(wifiSsid) > 0) {
-    Serial.printf("[MAIN] WiFi SSID configured: %s\n", wifiSsid);
+  if (AppConfig::isWifiConfigured()) {
+    const auto* wifiCfg = AppConfig::getWifiConfig();
+    Serial.printf("[MAIN] WiFi SSID configured: %s\n", wifiCfg->ssid);
     displayModule.showMessage("Checking WiFi...\n");
 
-    if (wifiModule.isSSIDAvailable(wifiSsid)) {
+    if (wifiModule.isSSIDAvailable(wifiCfg->ssid)) {
       displayModule.showMessage("WiFi found!\n");
       Serial.println("[MAIN] WiFi network found, attempting connection...");
       delay(1000);
 
       // WiFiに接続
-      wifiModule.begin(wifiSsid, wifiPassword);
+      wifiModule.begin(wifiCfg->ssid, wifiCfg->password);
       if (wifiModule.connect(30000)) {
         Serial.println("[MAIN] WiFi connected successfully");
 
@@ -230,12 +177,13 @@ void _stopRecording() {
         }
 
         // R2設定があればアップロード
-        if (strlen(r2AccountId) > 0 && strlen(r2AccessKey) > 0) {
-          Serial.printf("[MAIN] R2 Account ID: %s\n", r2AccountId);
-          Serial.printf("[MAIN] R2 Bucket: %s\n", r2BucketName);
-          Serial.printf("[MAIN] R2 Region: %s\n", r2Region);
-          Serial.printf("[MAIN] R2 Access Key length: %d\n", strlen(r2AccessKey));
-          r2Module.begin(r2AccountId, r2BucketName, r2AccessKey, r2SecretKey, r2Region);
+        if (AppConfig::isR2Configured()) {
+          const auto* r2Cfg = AppConfig::getR2Config();
+          Serial.printf("[MAIN] R2 Account ID: %s\n", r2Cfg->accountId);
+          Serial.printf("[MAIN] R2 Bucket: %s\n", r2Cfg->bucketName);
+          Serial.printf("[MAIN] R2 Region: %s\n", r2Cfg->region);
+          Serial.printf("[MAIN] R2 Access Key length: %d\n", strlen(r2Cfg->accessKey));
+          r2Module.begin(r2Cfg->accountId, r2Cfg->bucketName, r2Cfg->accessKey, r2Cfg->secretKey, r2Cfg->region);
 
           // CSVファイルをアップロード
           char remoteKey[256];

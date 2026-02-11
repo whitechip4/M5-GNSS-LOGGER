@@ -6,13 +6,7 @@
 
 #include "config.h"
 
-/**
- * @brief WiFi設定構造体
- */
-typedef struct {
-  char ssid[64];
-  char password[64];
-} MY_WIFI_CONFIG;
+// WIFI_CONFIG is now defined in config.h to avoid duplication
 
 /**
  * @brief WiFiモジュールクラス

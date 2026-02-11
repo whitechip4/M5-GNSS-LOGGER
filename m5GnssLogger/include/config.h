@@ -73,4 +73,80 @@ typedef enum {
   DISPLAY_MODE_SIMPLE = 1
 } DISPLAY_MODE;
 
+// ============================================================================
+// WiFi Configuration
+// ============================================================================
+
+/**
+ * @brief WiFi設定構造体
+ */
+typedef struct {
+  char ssid[64];
+  char password[64];
+} WIFI_CONFIG;
+
+// ============================================================================
+// R2 Configuration
+// ============================================================================
+
+/**
+ * @brief R2設定構造体
+ */
+typedef struct {
+  char accountId[64];
+  char bucketName[64];
+  char accessKey[128];
+  char secretKey[128];
+  char region[32];
+} R2_CONFIG;
+
+// ============================================================================
+// Application Configuration Namespace
+// ============================================================================
+
+/**
+ * @brief アプリケーション全体の設定を管理する名前空間
+ */
+namespace AppConfig {
+
+/**
+ * @brief WiFi設定を取得
+ * @return WiFi設定構造体へのポインタ
+ */
+const WIFI_CONFIG* getWifiConfig();
+
+/**
+ * @brief R2設定を取得
+ * @return R2設定構造体へのポインタ
+ */
+const R2_CONFIG* getR2Config();
+
+/**
+ * @brief 設定を.env.hのプリプロセッサマクロから読み込む
+ *
+ * この関数はsetup()内で呼び出し、.env.hで定義された
+ * WIFI_SSID, R2_ACCOUNT_IDなどのマクロから実行時設定にコピーします
+ *
+ * .env.hファイルが存在しない場合、各設定は空文字列のままです
+ */
+void loadConfig();
+
+/**
+ * @brief WiFi SSIDが設定されているか確認
+ * @return 設定されている場合true
+ */
+bool isWifiConfigured();
+
+/**
+ * @brief R2設定がされているか確認
+ * @return 設定されている場合true
+ */
+bool isR2Configured();
+
+// 内部実装用（config.cppで定義）
+extern WIFI_CONFIG _wifiConfig;
+extern R2_CONFIG _r2Config;
+
+}  // namespace AppConfig
+
 #endif  // CONFIG_H

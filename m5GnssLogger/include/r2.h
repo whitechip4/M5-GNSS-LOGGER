@@ -8,16 +8,7 @@
 #endif
 #include "config.h"
 
-/**
- * @brief R2設定構造体
- */
-typedef struct {
-  char accountId[64];
-  char bucketName[64];
-  char accessKey[128];
-  char secretKey[128];
-  char region[32];
-} R2_CONFIG;
+// R2_CONFIG is now defined in config.h to avoid duplication
 
 /**
  * @brief R2アップロードモジュールクラス

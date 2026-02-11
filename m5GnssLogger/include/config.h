@@ -68,34 +68,34 @@ typedef struct {
 // ============================================================================
 // Timing Constants (milliseconds)
 // ============================================================================
-#define DELAY_BUTTON_POLL_MS               50
-#define DELAY_GNSS_STABILITY_CHECK_MS      500
-#define DELAY_WIFI_PROGRESS_MS             500
-#define DELAY_NTP_RETRY_MS                 500
-#define DELAY_GENERAL_TIMING_MS            1000
-#define DELAY_DISPLAY_UPDATE_MS            1000
-#define DELAY_UPLOAD_MESSAGE_MS            2000
-#define DELAY_GNSS_INIT_MS                 5000
-#define DELAY_NTP_SYNC_MS                  5000
-#define DELAY_SD_ERROR_DISPLAY_MS          10000
-#define DELAY_CONFIRM_TIMEOUT_MS           10000
-#define DELAY_WIFI_CONNECT_TIMEOUT_MS      30000
-#define WIFI_CONNECTION_CHECK_INTERVAL_MS  5000
+#define DELAY_BUTTON_POLL_MS 50
+#define DELAY_GNSS_STABILITY_CHECK_MS 500
+#define DELAY_WIFI_PROGRESS_MS 500
+#define DELAY_NTP_RETRY_MS 500
+#define DELAY_GENERAL_TIMING_MS 1000
+#define DELAY_DISPLAY_UPDATE_MS 1000
+#define DELAY_UPLOAD_MESSAGE_MS 2000
+#define DELAY_GNSS_INIT_MS 5000
+#define DELAY_NTP_SYNC_MS 5000
+#define DELAY_SD_ERROR_DISPLAY_MS 10000
+#define DELAY_CONFIRM_TIMEOUT_MS 10000
+#define DELAY_WIFI_CONNECT_TIMEOUT_MS 30000
+#define WIFI_CONNECTION_CHECK_INTERVAL_MS 5000
 
 // ============================================================================
 // Buffer Sizes
 // ============================================================================
-#define BUFFER_FILENAME_MAX           64
-#define BUFFER_FILENAME_RAW_MAX      128
-#define BUFFER_TIME_STR              64
-#define BUFFER_SAT_STR               32
-#define BUFFER_REMOTE_KEY_MAX        256
+#define BUFFER_FILENAME_MAX 64
+#define BUFFER_FILENAME_RAW_MAX 128
+#define BUFFER_TIME_STR 64
+#define BUFFER_SAT_STR 32
+#define BUFFER_REMOTE_KEY_MAX 256
 
 // ============================================================================
 // Loop Intervals
 // ============================================================================
-#define LOOP_INTERVAL_MS            100
-#define LOOP_INTERVAL_VIBRATION_MS   1
+#define LOOP_INTERVAL_MS 100
+#define LOOP_INTERVAL_VIBRATION_MS 1
 
 /**
  * @brief 表示モード

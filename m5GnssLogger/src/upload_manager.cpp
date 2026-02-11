@@ -3,10 +3,13 @@
 #include "util.h"
 
 UploadManager::UploadManager(DisplayModule& display,
-                         MyWiFiModule& wifi,
-                         R2Module& r2,
-                         StorageModule& storage)
-    : _display(display), _wifi(wifi), _r2(r2), _storage(storage) {
+                             MyWiFiModule& wifi,
+                             R2Module& r2,
+                             StorageModule& storage)
+    : _display(display)
+    , _wifi(wifi)
+    , _r2(r2)
+    , _storage(storage) {
 }
 
 bool UploadManager::stopAndUpload(const GNSS_DATA& gnssData) {
@@ -135,11 +138,7 @@ bool UploadManager::_uploadToR2() {
   debug_print("UPLOAD", " R2 Bucket: %s", r2Cfg->bucketName);
   debug_print("UPLOAD", " R2 Region: %s", r2Cfg->region);
   debug_print("UPLOAD", " R2 Access Key length: %d", strlen(r2Cfg->accessKey));
-  _r2.begin(r2Cfg->accountId,
-            r2Cfg->bucketName,
-            r2Cfg->accessKey,
-            r2Cfg->secretKey,
-            r2Cfg->region);
+  _r2.begin(r2Cfg->accountId, r2Cfg->bucketName, r2Cfg->accessKey, r2Cfg->secretKey, r2Cfg->region);
 
   // キューを使ってアップロード
   char filename[128];
@@ -179,10 +178,9 @@ bool UploadManager::_uploadToR2() {
   }
 }
 
-void UploadManager::_generateR2Key(const char* filename,
-                                 char* remoteKey,
-                                 size_t remoteKeySize) {
-  // filename: "/gnss_csv_data_20250115_143000.csv" -> remoteKey: "gnss-data/20250115/gnss_csv_data_20250115_143000.csv"
+void UploadManager::_generateR2Key(const char* filename, char* remoteKey, size_t remoteKeySize) {
+  // filename: "/gnss_csv_data_20250115_143000.csv" -> remoteKey:
+  // "gnss-data/20250115/gnss_csv_data_20250115_143000.csv"
   const char* basename = filename + 1;  // 先頭の'/'をスキップ
   char dateStr[9];
   strncpy(dateStr, basename + 14, 8);  // "gnss_csv_data_"の後ろ8文字（YYYYMMDD）

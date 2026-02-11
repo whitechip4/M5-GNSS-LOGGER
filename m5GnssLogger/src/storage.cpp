@@ -61,7 +61,7 @@ bool StorageModule::addFileToUploadList(const char* filename) {
     while (_readLineFromFile(readFile, lineBuffer, sizeof(lineBuffer))) {
       if (strcmp(lineBuffer, filename) == 0) {
         readFile.close();
-        return true; // 既に存在
+        return true;  // 既に存在
       }
     }
     readFile.close();
@@ -97,7 +97,7 @@ bool StorageModule::removeFileFromUploadList(const char* filename) {
   readFile.close();
 
   if (!firstLine || strcmp(lineBuffer, filename) != 0) {
-    return false; // 先頭行が一致しない
+    return false;  // 先頭行が一致しない
   }
 
   // 残りの行を一時ファイルに書き出し
@@ -116,8 +116,10 @@ bool StorageModule::removeFileFromUploadList(const char* filename) {
     }
   }
 
-  if (tempFile) tempFile.close();
-  if (readFile) readFile.close();
+  if (tempFile)
+    tempFile.close();
+  if (readFile)
+    readFile.close();
 
   // 一時ファイルを本来のファイルに置換
   SD.remove(UNUPLOADED_LIST_FILENAME);
@@ -161,8 +163,10 @@ bool StorageModule::skipFileInUploadList(const char* filename) {
     }
   }
 
-  if (tempFile) tempFile.close();
-  if (readFile) readFile.close();
+  if (tempFile)
+    tempFile.close();
+  if (readFile)
+    readFile.close();
 
   // 一時ファイルを本来のファイルに置き換え
   SD.remove(UNUPLOADED_LIST_FILENAME);
@@ -206,7 +210,7 @@ bool StorageModule::isUploadQueueEmpty() {
 
   File file = SD.open(UNUPLOADED_LIST_FILENAME, FILE_READ);
   if (!file) {
-    return true; // ファイルがなければ空とみなす
+    return true;  // ファイルがなければ空とみなす
   }
 
   char lineBuffer[MAX_FILENAME_LENGTH];

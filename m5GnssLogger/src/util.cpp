@@ -68,9 +68,7 @@ time_t timegm_utc(struct tm* tm) {
   int year = tm->tm_year + 1900;
 
   // 各月の積算日数（閏年対応は後で計算）
-  static const int days_in_month[] = {
-    0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334
-  };
+  static const int days_in_month[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
 
   // 1970年からの年数を計算
   long days = (year - 1970) * 365L;

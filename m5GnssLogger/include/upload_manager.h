@@ -23,10 +23,7 @@ public:
    * @param r2 R2モジュールへの参照
    * @param storage ストレージモジュールへの参照
    */
-  UploadManager(DisplayModule& display,
-             MyWiFiModule& wifi,
-             R2Module& r2,
-             StorageModule& storage);
+  UploadManager(DisplayModule& display, MyWiFiModule& wifi, R2Module& r2, StorageModule& storage);
 
   /**
    * @brief レコーディング停止とアップロード処理を実行
@@ -79,9 +76,7 @@ private:
    * @param remoteKey 出力バッファ
    * @param remoteKeySize バッファサイズ
    */
-  void _generateR2Key(const char* filename,
-                     char* remoteKey,
-                     size_t remoteKeySize);
+  void _generateR2Key(const char* filename, char* remoteKey, size_t remoteKeySize);
 };
 
 #endif  // UPLOAD_MANAGER_H

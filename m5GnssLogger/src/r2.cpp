@@ -299,8 +299,8 @@ String R2Module::_generateSignature(const char* method,
 
   String stringToSign = "AWS4-HMAC-SHA256\n" + String(timestamp) + "\n" + credentialScope + "\n" +
                         hashedCanonicalRequest;
-  debug_print("R2", " String to Sign (first 100 chars): %s",
-                stringToSign.substring(0, 100).c_str());
+  debug_print(
+      "R2", " String to Sign (first 100 chars): %s", stringToSign.substring(0, 100).c_str());
 
   // Calculate signature
   // Derive signing key using binary HMAC

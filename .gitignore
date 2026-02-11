@@ -8,6 +8,9 @@
 # M5Stack Configuration
 m5GnssLogger/.env
 
+# Generated config files from .env
+m5GnssLogger/include/config_env.h
+
 # Cloudflare Workers Environment Variables
 cloud/workers/gpx-converter/.dev.vars
 cloud/workers/gpx-converter/.dev.vars.local

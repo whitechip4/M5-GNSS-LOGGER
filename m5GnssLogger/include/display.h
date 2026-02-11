@@ -1,7 +1,11 @@
 #ifndef DISPLAY_H
 #define DISPLAY_H
 
+#ifdef TESTING
+#include "native/mocks/mock_m5core2.h"
+#else
 #include <M5Core2.h>
+#endif
 #include "config.h"
 
 /**

@@ -75,7 +75,7 @@ Formatting is enforced by GitHub Actions on push/PR to main/master. Uses project
 
 **Key Types**: [`GNSS_DATA`](m5GnssLogger/include/config.h:10) struct contains all GNSS readings (lat/lng/alt/speed/time/fix quality).
 
-**Environment**: Configuration loaded from `.env` file (gitignored) via pre-build script [`tools/parse_env.py`](tools/parse_env.py) at build time. Template at [`.env.example`](m5GnssLogger/.env.example).
+**Environment**: Configuration loaded from `.env` file (gitignored). Template at [`.env.example`](m5GnssLogger/.env.example).
 
 **Thresholds** ([config.h](m5GnssLogger/include/config.h:42)): GNSS data is filtered by HDOP (< 6.0), min satellites (≥ 5), position change (> 0.001°).
 

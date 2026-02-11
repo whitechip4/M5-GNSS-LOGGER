@@ -128,7 +128,7 @@ void setup() {
 void _loadConfig() {
   // Load settings from auto-generated config_env.h
   // This file is generated from .env file during build
-  
+
 #ifdef WIFI_SSID
   strncpy(wifiSsid, WIFI_SSID, sizeof(wifiSsid) - 1);
   wifiSsid[sizeof(wifiSsid) - 1] = '\0';
@@ -221,7 +221,7 @@ void _stopRecording() {
           gpsTime.tm_min = gnssData.minute;
           gpsTime.tm_sec = gnssData.second;
           time_t gpsTimeVal = mktime(&gpsTime);
-          struct timeval tv = { gpsTimeVal, 0 };
+          struct timeval tv = {gpsTimeVal, 0};
           settimeofday(&tv, nullptr);
 
           char timeStr[64];

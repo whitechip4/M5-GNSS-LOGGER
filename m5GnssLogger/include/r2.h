@@ -1,7 +1,11 @@
 #ifndef R2_H
 #define R2_H
 
+#ifdef TESTING
+#include "mock_httpclient.h"
+#else
 #include <HTTPClient.h>
+#endif
 #include "config.h"
 
 /**
@@ -63,10 +67,29 @@ public:
    * @param bufferSize バッファサイズ
    * @param data 日時データ
    */
-  static void generateKey(const char* baseName,
-                           char* buffer,
-                           size_t bufferSize,
-                           const GNSS_DATA& data);
+  static void
+  generateKey(const char* baseName, char* buffer, size_t bufferSize, const GNSS_DATA& data);
+
+#ifdef TESTING
+  // Make private methods accessible for testing
+public:
+  String _sha256(const char* data, size_t len);
+  void _hmacSha256(const char* key, size_t keyLen, const char* data, size_t dataLen, char* output);
+  void _hmacSha256Binary(const char* key,
+                         size_t keyLen,
+                         const char* data,
+                         size_t dataLen,
+                         unsigned char* output);
+  String _generateSignature(const char* method,
+                            const char* key,
+                            const char* host,
+                            const char* region,
+                            const char* service,
+                            const char* timestamp,
+                            const char* payloadHash);
+
+private:
+#endif
 
 private:
   char _accountId[64];
@@ -81,6 +104,7 @@ private:
    */
   void _buildEndpoint();
 
+#ifndef TESTING
   /**
    * @brief AWS Signature V4 認証ヘッダーを生成
    * @param method HTTPメソッド
@@ -93,12 +117,12 @@ private:
    * @return 認証ヘッダー
    */
   String _generateSignature(const char* method,
-                             const char* key,
-                             const char* host,
-                             const char* region,
-                             const char* service,
-                             const char* timestamp,
-                             const char* payloadHash);
+                            const char* key,
+                            const char* host,
+                            const char* region,
+                            const char* service,
+                            const char* timestamp,
+                            const char* payloadHash);
 
   /**
    * @brief SHA256ハッシュを計算
@@ -116,11 +140,7 @@ private:
    * @param dataLen データの長さ
    * @param output 出力バッファ（65バイト以上必要）
    */
-  void _hmacSha256(const char* key,
-                   size_t keyLen,
-                   const char* data,
-                   size_t dataLen,
-                   char* output);
+  void _hmacSha256(const char* key, size_t keyLen, const char* data, size_t dataLen, char* output);
 
   /**
    * @brief HMAC-SHA256 computation returning binary data
@@ -135,6 +155,7 @@ private:
                          const char* data,
                          size_t dataLen,
                          unsigned char* output);
+#endif
 };
 
 #endif  // R2_H

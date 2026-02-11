@@ -5,7 +5,8 @@
 extern DisplayModule displayModule;
 
 MyWiFiModule::MyWiFiModule()
-    : _myConnected(false), _myLastConnectionCheck(0) {
+    : _myConnected(false)
+    , _myLastConnectionCheck(0) {
   _mySsid[0] = '\0';
   _myPassword[0] = '\0';
 }
@@ -13,10 +14,10 @@ MyWiFiModule::MyWiFiModule()
 void MyWiFiModule::begin(const char* ssid, const char* password) {
   strncpy(_mySsid, ssid, sizeof(_mySsid) - 1);
   _mySsid[sizeof(_mySsid) - 1] = '\0';
-  
+
   strncpy(_myPassword, password, sizeof(_myPassword) - 1);
   _myPassword[sizeof(_myPassword) - 1] = '\0';
-  
+
   WiFi.mode(WIFI_STA);
 }
 
@@ -80,8 +81,7 @@ bool MyWiFiModule::isSSIDAvailable(const char* targetSSID) {
   Serial.printf("[WiFi] Scanning... Found %d networks\n", numNetworks);
 
   for (int i = 0; i < numNetworks; i++) {
-    Serial.printf("[WiFi] Network %d: %s (RSSI: %d)\n",
-      i, WiFi.SSID(i).c_str(), WiFi.RSSI(i));
+    Serial.printf("[WiFi] Network %d: %s (RSSI: %d)\n", i, WiFi.SSID(i).c_str(), WiFi.RSSI(i));
     if (strcmp(WiFi.SSID(i).c_str(), targetSSID) == 0) {
       WiFi.scanDelete();
       Serial.printf("[WiFi] Target SSID '%s' found!\n", targetSSID);

@@ -10,6 +10,7 @@
 #include "util.h"
 #include "my_wifi.h"
 #include "r2.h"
+#include "upload_manager.h"
 
 // グローバルインスタンス
 GnssModule gnssModule(Serial2);
@@ -18,6 +19,7 @@ StorageModule storageModule;
 MyWiFiModule wifiModule;
 R2Module r2Module;
 AXP192 axp192;
+UploadManager uploadManager(displayModule, wifiModule, r2Module, storageModule);
 
 // グローバル変数
 GNSS_DATA gnssData;
@@ -173,138 +175,8 @@ void _stopRecording() {
   Serial.println("[MAIN] Recording stopped");
   delay(1000);
 
-  // WiFi設定があれば、指定SSIDを検索してアップロード
-  if (AppConfig::isWifiConfigured()) {
-    const auto* wifiCfg = AppConfig::getWifiConfig();
-    Serial.printf("[MAIN] WiFi SSID configured: %s\n", wifiCfg->ssid);
-    displayModule.showMessage("Checking WiFi...\n");
-
-    if (wifiModule.isSSIDAvailable(wifiCfg->ssid)) {
-      displayModule.showMessage("WiFi found!\n");
-      Serial.println("[MAIN] WiFi network found, attempting connection...");
-      delay(1000);
-
-      // WiFiに接続
-      wifiModule.begin(wifiCfg->ssid, wifiCfg->password);
-      if (wifiModule.connect(30000)) {
-        Serial.printf("[MAIN] WiFi connected successfully\r\n");
-
-        // NTPで時刻同期
-        // タイムゾーンを0にしてシステム時刻をUTCにする
-        configTime(0, 0, NTP_SERVER);
-        Serial.printf("[MAIN] Syncing time with NTP server: %s\r\n", NTP_SERVER);
-
-        // NTP同期を待機（最大10秒）
-        int ntpTries = 0;
-        time_t now = time(nullptr);
-        while (now < 1000000000 && ntpTries < 20) {  // 2001年以降なら成功
-          delay(500);
-          now = time(nullptr);
-          ntpTries++;
-        }
-
-        // NTP同期完了後に追加で5秒待つ（ESP32のNTP同期処理完了を待つ）
-        delay(5000);
-
-        if (now >= 1000000000) {
-          struct tm timeinfo;
-          gmtime_r(&now, &timeinfo);
-          char timeStr[64];
-          strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S UTC", &timeinfo);
-          Serial.printf("[MAIN] NTP sync successful: %s\r\n", timeStr);
-        } else {
-          Serial.printf("[MAIN] NTP sync failed, using GPS time\r\n");
-          // GPS時刻をシステム時刻に設定（フォールバック）
-          // gnssDataはローカル時刻（UTC_TIME_OFFSET_HOURSが加算済み）
-          // UTCに戻すために、タイムゾーンオフセットを引く
-          struct tm gpsTime;
-          gpsTime.tm_year = gnssData.year - 1900;
-          gpsTime.tm_mon = gnssData.month - 1;
-          gpsTime.tm_mday = gnssData.day;
-          gpsTime.tm_hour = gnssData.hour - UTC_TIME_OFFSET_HOURS;  // ローカル→UTC
-          gpsTime.tm_min = gnssData.minute;
-          gpsTime.tm_sec = gnssData.second;
-          // システムタイムゾーンはUTC(0)なのでmktimeでOK
-          time_t gpsTimeVal = mktime(&gpsTime);
-          struct timeval tv = {gpsTimeVal, 0};
-          settimeofday(&tv, nullptr);
-
-          // ログ出力用に元のローカル時刻を復元
-          gpsTime.tm_hour = gnssData.hour;
-          char timeStr[64];
-          strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S UTC", &gpsTime);
-          Serial.printf("[MAIN] Using GPS time: %s\r\n", timeStr);
-        }
-
-        // R2設定があればアップロード
-        if (AppConfig::isR2Configured()) {
-          const auto* r2Cfg = AppConfig::getR2Config();
-          Serial.printf("[MAIN] R2 Account ID: %s\r\n", r2Cfg->accountId);
-          Serial.printf("[MAIN] R2 Bucket: %s\r\n", r2Cfg->bucketName);
-          Serial.printf("[MAIN] R2 Region: %s\r\n", r2Cfg->region);
-          Serial.printf("[MAIN] R2 Access Key length: %d\r\n", strlen(r2Cfg->accessKey));
-          r2Module.begin(r2Cfg->accountId, r2Cfg->bucketName, r2Cfg->accessKey, r2Cfg->secretKey, r2Cfg->region);
-
-          // キューを使ってアップロード
-          char filename[128];
-          int uploadedCount = 0;
-          bool batchFailure = false;
-
-          // キューから順番にアップロード（失敗時は中断）
-          while (storageModule.getNextFileToUpload(filename, sizeof(filename))) {
-            // R2キーを生成：filenameから日付部分を抽出してR2パスを作成
-            // filename: "/gnss_csv_data_20250115_143000.csv" -> remoteKey: "gnss-data/20250115/gnss_csv_data_20250115_143000.csv"
-            char remoteKey[256];
-            const char* basename = filename + 1;  // 先頭の'/'をスキップ
-            char dateStr[9];
-            strncpy(dateStr, basename + 14, 8);  // "gnss_csv_data_"の後ろ8文字（YYYYMMDD）
-            dateStr[8] = '\0';
-            snprintf(remoteKey, sizeof(remoteKey), "gnss-data/%s/%s", dateStr, basename);
-
-            Serial.printf("[MAIN] Uploading: %s -> %s\r\n", filename, remoteKey);
-
-            // アップロード試行
-            if (r2Module.uploadFile(filename, remoteKey)) {
-              // 成功したらキューから削除
-              storageModule.removeFileFromUploadList(filename);
-              uploadedCount++;
-              displayModule.showMessage("Uploaded!\n");
-              Serial.printf("[MAIN] Upload success: %s\r\n", filename);
-              delay(500);
-            } else {
-              // 失敗したら中止
-              batchFailure = true;
-                   break;  // 中止
-            }
-          }
-
-          // 結果メッセージ
-          if (batchFailure) {
-            Serial.println("[MAIN] Batch upload failed. Will retry on next startup.");
-          } else {
-            Serial.printf("[MAIN] Batch upload complete: %d files\r\n", uploadedCount);
-          }
-        } else {
-          Serial.println("[MAIN] R2 credentials not configured, skipping upload");
-        }
-
-        // WiFi切断
-        wifiModule.disconnect();
-        displayModule.showMessage("WiFi disconnected\n");
-        delay(1000);
-      }
-    } else {
-      displayModule.showMessage("WiFi not found\n");
-      Serial.println("[MAIN] WiFi network not found");
-      delay(2000);
-    }
-  } else {
-    Serial.println("[MAIN] WiFi SSID not configured, skipping upload");
-  }
-
-  displayModule.showMessage("Data saved to SD\n");
-  Serial.println("[MAIN] Data saved to SD card");
-  delay(2000);
+  // アップロードマネージャーで処理
+  uploadManager.stopAndUpload(gnssData);
 }
 
 void loop() {

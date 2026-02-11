@@ -83,6 +83,9 @@ bool UploadManager::_connectWiFi(const WIFI_CONFIG* wifiCfg) {
 bool UploadManager::_syncTimeWithNTP() {
   // タイムゾーンを0にしてシステム時刻をUTCにする
   configTime(0, 0, NTP_SERVER);
+
+  _display.clear();
+  _display.showMessage("Syncing NTP time...\n");
   debug_print("UPLOAD", " Syncing time with NTP server: %s", NTP_SERVER);
 
   // NTP同期を待機（最大10秒）
@@ -92,9 +95,15 @@ bool UploadManager::_syncTimeWithNTP() {
     delay(500);
     now = time(nullptr);
     ntpTries++;
+
+    // Progress indicator on LCD
+    if (ntpTries % 4 == 0) {  // Every 2 seconds
+      _display.showMessage(".");
+    }
   }
 
   // NTP同期完了後に追加で5秒待つ（ESP32のNTP同期処理完了を待つ）
+  _display.showMessage("\nWaiting...");
   delay(5000);
 
   if (now >= 1000000000) {
@@ -102,10 +111,19 @@ bool UploadManager::_syncTimeWithNTP() {
     gmtime_r(&now, &timeinfo);
     char timeStr[64];
     strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S UTC", &timeinfo);
+
+    _display.clear();
+    _display.showMessage("Time synced!\n");
     debug_print("UPLOAD", " NTP sync successful: %s", timeStr);
+    delay(1000);
     return true;
   }
 
+  // NTP失敗時のメッセージ
+  _display.clear();
+  _display.showMessage("NTP failed\n");
+  debug_print("UPLOAD", " NTP sync failed, using GPS time");
+  delay(1000);
   return false;
 }
 

@@ -143,6 +143,10 @@ void setup() {
   storageModule.writeData(gnssData, fileName);
   storageModule.writeRawData(gnssData, fileRawDataName);
 
+  // アップロードキューにファイルを追加
+  storageModule.addFileToUploadList(fileName);
+  storageModule.addFileToUploadList(fileRawDataName);
+
   // GNSSデータ安定待機
   do {
     displayModule.showMessage("Waiting gnss data be stable...\n");
@@ -241,33 +245,44 @@ void _stopRecording() {
           Serial.printf("[MAIN] R2 Access Key length: %d\r\n", strlen(r2Cfg->accessKey));
           r2Module.begin(r2Cfg->accountId, r2Cfg->bucketName, r2Cfg->accessKey, r2Cfg->secretKey, r2Cfg->region);
 
-          // CSVファイルをアップロード
-          char remoteKey[256];
-          R2Module::generateKey("gnss_csv_data", remoteKey, sizeof(remoteKey), gnssData);
-          Serial.printf("[MAIN] Uploading regular CSV file: %s\n", fileName);
-          Serial.printf("[MAIN] Remote key: %s\n", remoteKey);
+          // キューを使ってアップロード
+          char filename[128];
+          int uploadedCount = 0;
+          bool batchFailure = false;
 
-          if (r2Module.uploadFile(fileName, remoteKey)) {
-            displayModule.showMessage("CSV uploaded!\n");
-            Serial.println("[MAIN] Regular CSV upload successful!");
-            delay(1000);
-          } else {
-            Serial.println("[MAIN] Regular CSV upload failed!");
+          // キューから順番にアップロード（失敗時は中断）
+          while (storageModule.getNextFileToUpload(filename, sizeof(filename))) {
+            // R2キーを生成：filenameから日付部分を抽出してR2パスを作成
+            // filename: "/gnss_csv_data_20250115_143000.csv" -> remoteKey: "gnss-data/20250115/gnss_csv_data_20250115_143000.csv"
+            char remoteKey[256];
+            const char* basename = filename + 1;  // 先頭の'/'をスキップ
+            char dateStr[9];
+            strncpy(dateStr, basename + 14, 8);  // "gnss_csv_data_"の後ろ8文字（YYYYMMDD）
+            dateStr[8] = '\0';
+            snprintf(remoteKey, sizeof(remoteKey), "gnss-data/%s/%s", dateStr, basename);
+
+            Serial.printf("[MAIN] Uploading: %s -> %s\r\n", filename, remoteKey);
+
+            // アップロード試行
+            if (r2Module.uploadFile(filename, remoteKey)) {
+              // 成功したらキューから削除
+              storageModule.removeFileFromUploadList(filename);
+              uploadedCount++;
+              displayModule.showMessage("Uploaded!\n");
+              Serial.printf("[MAIN] Upload success: %s\r\n", filename);
+              delay(500);
+            } else {
+              // 失敗したら中止
+              batchFailure = true;
+                   break;  // 中止
+            }
           }
 
-          // Raw CSVファイルもアップロード
-          R2Module::generateKey("gnss_csv_data", remoteKey, sizeof(remoteKey), gnssData);
-          size_t keyLen = strlen(remoteKey);
-          snprintf(remoteKey + keyLen - 4, sizeof(remoteKey) - keyLen + 4, "_raw.csv");
-          Serial.printf("[MAIN] Uploading raw CSV file: %s\n", fileRawDataName);
-          Serial.printf("[MAIN] Remote key: %s\n", remoteKey);
-
-          if (r2Module.uploadFile(fileRawDataName, remoteKey)) {
-            displayModule.showMessage("Raw CSV uploaded!\n");
-            Serial.println("[MAIN] Raw CSV upload successful!");
-            delay(1000);
+          // 結果メッセージ
+          if (batchFailure) {
+            Serial.println("[MAIN] Batch upload failed. Will retry on next startup.");
           } else {
-            Serial.println("[MAIN] Raw CSV upload failed!");
+            Serial.printf("[MAIN] Batch upload complete: %d files\r\n", uploadedCount);
           }
         } else {
           Serial.println("[MAIN] R2 credentials not configured, skipping upload");

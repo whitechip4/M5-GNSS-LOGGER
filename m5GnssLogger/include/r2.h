@@ -51,16 +51,6 @@ public:
    */
   bool uploadData(const char* data, size_t dataSize, const char* remoteKey);
 
-  /**
-   * @brief 日付ベースのR2キーを生成
-   * @param baseName ベースファイル名
-   * @param buffer 出力バッファ
-   * @param bufferSize バッファサイズ
-   * @param data 日時データ
-   */
-  static void
-  generateKey(const char* baseName, char* buffer, size_t bufferSize, const GNSS_DATA& data);
-
 #ifdef TESTING
   // Make private methods accessible for testing
 public:

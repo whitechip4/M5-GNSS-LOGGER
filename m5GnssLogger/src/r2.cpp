@@ -167,26 +167,6 @@ bool R2Module::uploadData(const char* data, size_t dataSize, const char* remoteK
   return success;
 }
 
-void R2Module::generateKey(const char* baseName,
-                           char* buffer,
-                           size_t bufferSize,
-                           const GNSS_DATA& data) {
-  // Format: gnss-data/YYYYMMDD/basename_YYYYMMDD_HHMMSS.csv
-  snprintf(buffer,
-           bufferSize,
-           "gnss-data/%04d%02d%02d/%s_%04d%02d%02d_%02d%02d%02d.csv",
-           data.year,
-           data.month,
-           data.day,
-           baseName,
-           data.year,
-           data.month,
-           data.day,
-           data.hour,
-           data.minute,
-           data.second);
-}
-
 String R2Module::_generateSignature(const char* method,
                                     const char* key,
                                     const char* host,

@@ -126,6 +126,51 @@ bool StorageModule::removeFileFromUploadList(const char* filename) {
   return true;
 }
 
+bool StorageModule::skipFileInUploadList(const char* filename) {
+  if (!isReady() || filename == nullptr) {
+    return false;
+  }
+
+  // 先頭行を読み飛ばし（削除対象の確認）
+  File readFile = SD.open(UNUPLOADED_LIST_FILENAME, FILE_READ);
+  if (!readFile) {
+    return false;
+  }
+
+  char lineBuffer[MAX_FILENAME_LENGTH];
+  bool firstLine = _readLineFromFile(readFile, lineBuffer, sizeof(lineBuffer));
+  readFile.close();
+
+  // 先頭行が一致しない場合はfalse（スキップ不可）
+  if (!firstLine || strcmp(lineBuffer, filename) != 0) {
+    return false;
+  }
+
+  // 先頭行をスキップして残りを一時ファイルに書き出し
+  File tempFile = SD.open("/unuploaded.tmp", FILE_WRITE);
+  readFile = SD.open(UNUPLOADED_LIST_FILENAME, FILE_READ);
+
+  // 先頭行を読み飛ばす
+  _readLineFromFile(readFile, lineBuffer, sizeof(lineBuffer));
+
+  // 残りをコピー
+  while (_readLineFromFile(readFile, lineBuffer, sizeof(lineBuffer))) {
+    if (strlen(lineBuffer) > 0) {
+      tempFile.println(lineBuffer);
+    }
+  }
+
+  if (tempFile) tempFile.close();
+  if (readFile) readFile.close();
+
+  // 一時ファイルを本来のファイルに置き換え
+  SD.remove(UNUPLOADED_LIST_FILENAME);
+  SD.rename("/unuploaded.tmp", UNUPLOADED_LIST_FILENAME);
+
+  Serial.printf("[STORAGE] Skipped in queue: %s\r\n", filename);
+  return true;
+}
+
 bool StorageModule::getNextFileToUpload(char* filenameBuffer, size_t bufferSize) {
   if (!isReady()) {
     return false;

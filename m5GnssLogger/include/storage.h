@@ -78,6 +78,13 @@ public:
   bool removeFileFromUploadList(const char* filename);
 
   /**
+   * @brief アップロードキューの先頭ファイルをスキップ（失敗時用）
+   * @param filename スキップするファイル名（先頭スラッシュ付き）
+   * @return 成功時true、先頭行が一致しない場合false
+   */
+  bool skipFileInUploadList(const char* filename);
+
+  /**
    * @brief アップロードキューから次のファイルを取得
    * @param filenameBuffer ファイル名を格納するバッファ
    * @param bufferSize バッファサイズ

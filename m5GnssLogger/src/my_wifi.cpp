@@ -1,5 +1,6 @@
 #include "my_wifi.h"
 #include "display.h"
+#include "util.h"
 
 // Global display module instance (declared in main.cpp)
 extern DisplayModule displayModule;
@@ -27,7 +28,7 @@ bool MyWiFiModule::connect(unsigned long timeout) {
   }
 
   displayModule.showMessage("Connecting to WiFi...\n");
-  Serial.printf("[WiFi] Connecting to: %s\r\n", _mySsid);
+  debug_print("WiFi", "Connecting to: %s", _mySsid);
 
   WiFi.begin(_mySsid, _myPassword);
 
@@ -35,19 +36,19 @@ bool MyWiFiModule::connect(unsigned long timeout) {
   while (WiFi.status() != WL_CONNECTED && millis() - start < timeout) {
     delay(500);
     displayModule.showMessage(".");
-    Serial.printf("[WiFi] Status: %d\r\n", WiFi.status());
+    debug_print("WiFi", "Status: %d", WiFi.status());
   }
 
   if (WiFi.status() == WL_CONNECTED) {
     _myConnected = true;
     displayModule.showMessage("WiFi connected!\n");
-    Serial.printf("[WiFi] Connected! IP: %s\r\n", WiFi.localIP().toString().c_str());
+    debug_print("WiFi", "Connected! IP: %s", WiFi.localIP().toString().c_str());
     delay(1000);
     return true;
   } else {
     _myConnected = false;
     displayModule.showMessage("WiFi connection failed\n");
-    Serial.printf("[WiFi] Connection failed after %lu ms\r\n", millis() - start);
+    debug_print("WiFi", "Connection failed after %lu ms", millis() - start);
     delay(2000);
     return false;
   }
@@ -78,27 +79,20 @@ bool MyWiFiModule::isSSIDAvailable(const char* targetSSID) {
   displayModule.showMessage("Scanning WiFi...\n");
 
   int numNetworks = WiFi.scanNetworks();
-  Serial.printf("[WiFi] Scanning... Found %d networks\r\n", numNetworks);
+  debug_print("WiFi", "Scanning... Found %d networks", numNetworks);
 
   for (int i = 0; i < numNetworks; i++) {
-    Serial.printf("[WiFi] Network %d: %s (RSSI: %d)\r\n", i, WiFi.SSID(i).c_str(), WiFi.RSSI(i));
+    debug_print("WiFi", "Network %d: %s (RSSI: %d)", i, WiFi.SSID(i).c_str(), WiFi.RSSI(i));
     if (strcmp(WiFi.SSID(i).c_str(), targetSSID) == 0) {
       WiFi.scanDelete();
-      Serial.printf("[WiFi] Target SSID '%s' found!\r\n", targetSSID);
+      debug_print("WiFi", "Target SSID '%s' found!", targetSSID);
       return true;
     }
   }
 
   WiFi.scanDelete();
-  Serial.printf("[WiFi] Target SSID '%s' not found\r\n", targetSSID);
+  debug_print("WiFi", "Target SSID '%s' not found", targetSSID);
   return false;
-}
-
-const char* MyWiFiModule::getCurrentSSID() {
-  if (_myConnected) {
-    return WiFi.SSID().c_str();
-  }
-  return nullptr;
 }
 
 void MyWiFiModule::update() {

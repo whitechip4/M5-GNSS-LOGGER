@@ -30,59 +30,8 @@ bool isRecording = true;
 DISPLAY_MODE viewMode = DISPLAY_MODE_DETAIL;
 
 // ファイル名（setupで初期化）
-char fileName[64] = "";
-char fileRawDataName[128] = "";
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/**
- * @brief UTC時刻のtm構造体をtime_tに変換
- * @param tm UTC時刻のtm構造体
- * @return Unixタイムスタンプ
- *
- * mktime()は入力をローカル時刻として扱うため、
- * ESP32でUTCを扱う場合はこの関数を使用する
- */
-time_t timegm_utc(struct tm* tm) {
-  int month = tm->tm_mon;
-  int year = tm->tm_year + 1900;
-
-  // 各月の積算日数（閏年対応は後で計算）
-  static const int days_in_month[] = {
-    0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334
-  };
-
-  // 1970年からの年数を計算
-  long days = (year - 1970) * 365L;
-
-  // 閏年の日数を加算
-  for (int y = 1970; y < year; y++) {
-    if ((y % 4 == 0 && y % 100 != 0) || (y % 400 == 0)) {
-      days += 1;
-    }
-  }
-
-  // 今年の経過日数を加算
-  days += days_in_month[month];
-
-  // 閏年で2月以降の場合は+1日
-  if (month > 1 && ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0))) {
-    days += 1;
-  }
-
-  // 日を加算
-  days += tm->tm_mday - 1;
-
-  // 秒数に変換
-  time_t result = days * 86400L;
-  result += tm->tm_hour * 3600L;
-  result += tm->tm_min * 60L;
-  result += tm->tm_sec;
-
-  return result;
-}
+char fileName[BUFFER_FILENAME_MAX] = "";
+char fileRawDataName[BUFFER_FILENAME_RAW_MAX] = "";
 
 void setup() {
   M5.begin(true, true, true, true);
@@ -94,7 +43,7 @@ void setup() {
   // GNSSモジュール初期化
   if (!gnssModule.begin()) {
     displayModule.showMessage("u-blox GNSS module not detected");
-    delay(5000);
+    delay(DELAY_GNSS_INIT_MS);
     ESP.restart();
   }
 
@@ -109,7 +58,7 @@ void setup() {
 
     displayModule.showMessage("Waiting for receive Time Signal...\n");
     displayModule.showMessage("DT: ");
-    char timeStr[64];
+    char timeStr[BUFFER_TIME_STR];
     sprintf(timeStr,
             "%04d/%02d/%02d_%02d%02d%02d\n",
             gnssData.year,
@@ -120,7 +69,7 @@ void setup() {
             gnssData.second);
     displayModule.showMessage(timeStr);
 
-    delay(1000);
+    delay(DELAY_GENERAL_TIMING_MS);
     displayModule.clear();
   } while (
       !(gnssData.timeValid && gnssData.dateValid && (gnssData.second != 0) && (gnssData.day != 0)));
@@ -133,7 +82,7 @@ void setup() {
   // SDカード初期化
   if (!storageModule.begin()) {
     displayModule.showMessage("Error : SDCardNotFound");
-    delay(10000);
+    delay(DELAY_SD_ERROR_DISPLAY_MS);
     ESP.restart();
   }
 
@@ -152,7 +101,7 @@ void setup() {
   // GNSSデータ安定待機
   do {
     displayModule.showMessage("Waiting gnss data be stable...\n");
-    char satStr[32];
+    char satStr[BUFFER_SAT_STR];
     sprintf(satStr, "Satellites: %d (>= 7)\n", gnssData.siv);
     displayModule.showMessage(satStr);
 
@@ -160,7 +109,7 @@ void setup() {
     gnssModule.getData(gnssData);
     isGpsOk = gnssModule.isValid(gnssData);
 
-    delay(500);
+    delay(DELAY_GNSS_STABILITY_CHECK_MS);
     displayModule.clear();
   } while ((!isGpsOk) && (gnssData.siv < 7));
 
@@ -172,18 +121,57 @@ void _stopRecording() {
   isRecording = false;
   displayModule.clear();
   displayModule.showMessage("Recording stopped\n");
-  Serial.println("[MAIN] Recording stopped");
-  delay(1000);
+  debug_print("MAIN", "Recording stopped");
+  delay(DELAY_GENERAL_TIMING_MS);
 
   // アップロードマネージャーで処理
   uploadManager.stopAndUpload(gnssData);
+}
+
+void _showStopConfirmationDialog() {
+  displayModule.showMessage("Stop recording?\n");
+  displayModule.showMessage("BtnB: Confirm\n");
+  displayModule.showMessage("BtnC: Cancel\n");
+  vibration(200);
+
+  unsigned long confirmStart = millis();
+  bool confirmed = false;
+  bool cancelled = false;
+
+  while (millis() - confirmStart < DELAY_CONFIRM_TIMEOUT_MS) {
+    M5.update();
+    vibrationProcess();
+
+    if (M5.BtnB.wasPressed()) {
+      confirmed = true;
+      vibration(200);
+      break;
+    }
+
+    if (M5.BtnC.wasPressed()) {
+      cancelled = true;
+      vibration(200);
+      break;
+    }
+
+    delay(DELAY_BUTTON_POLL_MS);
+  }
+
+  if (confirmed) {
+    stopVibration();
+    _stopRecording();
+  } else {
+    displayModule.clear();
+    vibration(200);
+    stopVibration();
+  }
 }
 
 void loop() {
   static uint8_t preSecond = 0;
 
   // 100msec job
-  if (!(millis() % 100)) {
+  if (!(millis() % LOOP_INTERVAL_MS)) {
     M5.update();
     gnssModule.update();
     gnssModule.getData(gnssData);
@@ -218,47 +206,11 @@ void loop() {
 
     // button B pressed -> stop recording (with confirmation)
     if (M5.BtnB.wasPressed() && isRecording) {
-      displayModule.showMessage("Stop recording?\n");
-      displayModule.showMessage("BtnB: Confirm\n");
-      displayModule.showMessage("BtnC: Cancel\n");
-      vibration(200);
-
-      // 確認ダイアログの待機ループ
-      unsigned long confirmStart = millis();
-      bool confirmed = false;
-      bool cancelled = false;
-
-      while (millis() - confirmStart < 10000) {  // 10秒間待機
-        M5.update();
-        vibrationProcess();
-
-        if (M5.BtnB.wasPressed()) {
-          confirmed = true;
-          vibration(200);
-          break;
-        }
-
-        if (M5.BtnC.wasPressed()) {
-          cancelled = true;
-          vibration(200);
-          break;
-        }
-
-        delay(50);
-      }
-
-      if (confirmed) {
-        stopVibration();  // 振動を停止してからアップロード処理へ
-        _stopRecording();
-      } else {
-        displayModule.clear();
-        vibration(200);
-        stopVibration();  // 振動を即座に停止
-      }
+      _showStopConfirmationDialog();
     }
 
     // 1msec job
-    if (!(millis() % 1)) {
+    if (!(millis() % LOOP_INTERVAL_VIBRATION_MS)) {
       vibrationProcess();
     }
   }

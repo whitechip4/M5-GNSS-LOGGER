@@ -51,12 +51,6 @@ public:
   bool isSSIDAvailable(const char* targetSSID);
 
   /**
-   * @brief 現在接続中のSSIDを取得
-   * @return SSID文字列
-   */
-  const char* getCurrentSSID();
-
-  /**
    * @brief WiFi接続を更新（ループ内で定期的に呼ぶ）
    */
   void update();

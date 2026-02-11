@@ -1,5 +1,6 @@
 #include "r2.h"
 #include "display.h"
+#include "util.h"
 #include <WiFiClientSecure.h>
 #include <mbedtls/md.h>
 #include <mbedtls/sha256.h>
@@ -47,31 +48,31 @@ void R2Module::_buildEndpoint() {
 
 bool R2Module::uploadFile(const char* localFilePath, const char* remoteKey) {
   displayModule.showMessage("Reading file...\n");
-  Serial.printf("[R2] Opening file: %s\r\n", localFilePath);
+  debug_print("R2", " Opening file: %s", localFilePath);
 
   // Read file from SD card
   File file = SD.open(localFilePath, FILE_READ);
   if (!file) {
     displayModule.showMessage("File not found\n");
-    Serial.println("[R2] File not found!");
+    debug_print("R2", " File not found!");
     return false;
   }
 
   size_t fileSize = file.size();
-  Serial.printf("[R2] File size: %u bytes\r\n", fileSize);
+  debug_print("R2", " File size: %u bytes", fileSize);
   if (fileSize == 0) {
     displayModule.showMessage("Empty file\n");
-    Serial.println("[R2] Empty file!");
+    debug_print("R2", " Empty file!");
     file.close();
     return false;
   }
 
   // Allocate buffer for file content
   char* buffer = (char*)malloc(fileSize + 1);
-  Serial.printf("[R2] Memory allocated: %u bytes\r\n", fileSize + 1);
+  debug_print("R2", " Memory allocated: %u bytes", fileSize + 1);
   if (!buffer) {
     displayModule.showMessage("Memory error\n");
-    Serial.println("[R2] Memory allocation failed!");
+    debug_print("R2", " Memory allocation failed!");
     file.close();
     return false;
   }
@@ -80,10 +81,10 @@ bool R2Module::uploadFile(const char* localFilePath, const char* remoteKey) {
   size_t bytesRead = file.read((uint8_t*)buffer, fileSize);
   file.close();
 
-  Serial.printf("[R2] Bytes read: %u / %u\r\n", bytesRead, fileSize);
+  debug_print("R2", " Bytes read: %u / %u", bytesRead, fileSize);
   if (bytesRead != fileSize) {
     displayModule.showMessage("Read error\n");
-    Serial.println("[R2] Read error!");
+    debug_print("R2", " Read error!");
     free(buffer);
     return false;
   }
@@ -99,20 +100,20 @@ bool R2Module::uploadFile(const char* localFilePath, const char* remoteKey) {
 
 bool R2Module::uploadFileStream(const char* localFilePath, const char* remoteKey) {
   displayModule.showMessage("Preparing upload...\n");
-  Serial.printf("[R2] Opening file: %s\r\n", localFilePath);
+  debug_print("R2", " Opening file: %s", localFilePath);
 
   File file = SD.open(localFilePath, FILE_READ);
   if (!file) {
     displayModule.showMessage("File not found\n");
-    Serial.println("[R2] File not found!");
+    debug_print("R2", " File not found!");
     return false;
   }
 
   size_t fileSize = file.size();
-  Serial.printf("[R2] File size: %u bytes\r\n", fileSize);
+  debug_print("R2", " File size: %u bytes", fileSize);
   if (fileSize == 0) {
     displayModule.showMessage("Empty file\n");
-    Serial.println("[R2] Empty file!");
+    debug_print("R2", " Empty file!");
     file.close();
     return false;
   }
@@ -145,7 +146,7 @@ bool R2Module::_uploadStreamData(Stream& stream, size_t dataSize, const char* re
 
   // Use UNSIGNED-PAYLOAD for streaming (no pre-calculated hash needed)
   String payloadHash = "UNSIGNED-PAYLOAD";
-  Serial.printf("[R2] Using UNSIGNED-PAYLOAD for streaming\r\n");
+  debug_print("R2", " Using UNSIGNED-PAYLOAD for streaming");
 
   // Get current timestamp
   time_t now = time(nullptr);
@@ -155,7 +156,7 @@ bool R2Module::_uploadStreamData(Stream& stream, size_t dataSize, const char* re
   strftime(timestamp, sizeof(timestamp), "%Y%m%dT%H%M%SZ", &timeinfo);
   char dateStamp[9];
   strftime(dateStamp, sizeof(dateStamp), "%Y%m%d", &timeinfo);
-  Serial.printf("[R2] Timestamp: %s\r\n", timestamp);
+  debug_print("R2", " Timestamp: %s", timestamp);
 
   // Generate authorization header with UNSIGNED-PAYLOAD
   String authHeader = _generateSignature(
@@ -169,20 +170,20 @@ bool R2Module::_uploadStreamData(Stream& stream, size_t dataSize, const char* re
   http.addHeader("Authorization", authHeader);
 
   // Send PUT request with streaming - HTTPClient will read in chunks
-  Serial.printf("[R2] Starting streaming upload of %u bytes\r\n", dataSize);
+  debug_print("R2", " Starting streaming upload of %u bytes", dataSize);
   int httpCode = http.sendRequest("PUT", &stream, dataSize);
-  Serial.printf("[R2] HTTP response code: %d\r\n", httpCode);
+  debug_print("R2", " HTTP response code: %d", httpCode);
 
   // Check response
   bool success = (httpCode == 200);
 
   if (success) {
     displayModule.showMessage("Upload successful!\n");
-    Serial.println("[R2] Upload successful!");
+    debug_print("R2", " Upload successful!");
   } else {
     String response = http.getString();
     displayModule.showMessage("Upload failed\n");
-    Serial.printf("[R2] Upload failed - Code: %d, Response: %s\r\n", httpCode, response.c_str());
+    debug_print("R2", " Upload failed - Code: %d, Response: %s", httpCode, response.c_str());
   }
 
   http.end();
@@ -214,7 +215,7 @@ bool R2Module::uploadData(const char* data, size_t dataSize, const char* remoteK
 
   // Calculate payload hash
   String payloadHash = _sha256(data, dataSize);
-  Serial.printf("[R2] Payload hash: %s\r\n", payloadHash.c_str());
+  debug_print("R2", " Payload hash: %s", payloadHash.c_str());
 
   // Get current timestamp
   time_t now = time(nullptr);
@@ -224,7 +225,7 @@ bool R2Module::uploadData(const char* data, size_t dataSize, const char* remoteK
   strftime(timestamp, sizeof(timestamp), "%Y%m%dT%H%M%SZ", &timeinfo);
   char dateStamp[9];
   strftime(dateStamp, sizeof(dateStamp), "%Y%m%d", &timeinfo);
-  Serial.printf("[R2] Timestamp: %s\r\n", timestamp);
+  debug_print("R2", " Timestamp: %s", timestamp);
 
   // Generate authorization header
   String authHeader = _generateSignature(
@@ -238,21 +239,21 @@ bool R2Module::uploadData(const char* data, size_t dataSize, const char* remoteK
   http.addHeader("Authorization", authHeader);
 
   // Send PUT request
-  Serial.printf("[R2] Connecting to: %s\r\n", host.c_str());
-  Serial.printf("[R2] URI: %s\r\n", uri.c_str());
+  debug_print("R2", " Connecting to: %s", host.c_str());
+  debug_print("R2", " URI: %s", uri.c_str());
   int httpCode = http.PUT((uint8_t*)data, dataSize);
-  Serial.printf("[R2] HTTP response code: %d\r\n", httpCode);
+  debug_print("R2", " HTTP response code: %d", httpCode);
 
   // Check response
   bool success = (httpCode == 200);
 
   if (success) {
     displayModule.showMessage("Upload successful!\n");
-    Serial.println("[R2] Upload successful!");
+    debug_print("R2", " Upload successful!");
   } else {
     String response = http.getString();
     displayModule.showMessage("Upload failed\n");
-    Serial.printf("[R2] Upload failed - Code: %d, Response: %s\r\n", httpCode, response.c_str());
+    debug_print("R2", " Upload failed - Code: %d, Response: %s", httpCode, response.c_str());
   }
 
   http.end();
@@ -270,22 +271,22 @@ String R2Module::_generateSignature(const char* method,
                                     const char* payloadHash) {
   // Create canonical request
   String canonicalUri = "/" + String(_bucketName) + "/" + String(key);
-  Serial.printf("[R2] Canonical URI: %s\r\n", canonicalUri.c_str());
+  debug_print("R2", " Canonical URI: %s", canonicalUri.c_str());
 
   String canonicalQueryString = "";
   String canonicalHeaders = "host:" + String(host) + "\n" +
                             "x-amz-content-sha256:" + String(payloadHash) + "\n" +
                             "x-amz-date:" + String(timestamp) + "\n";
   String signedHeaders = "host;x-amz-content-sha256;x-amz-date";
-  Serial.printf("[R2] Canonical Headers: %s\r\n", canonicalHeaders.c_str());
+  debug_print("R2", " Canonical Headers: %s", canonicalHeaders.c_str());
 
   String canonicalRequest = String(method) + "\n" + canonicalUri + "\n" + canonicalQueryString +
                             "\n" + canonicalHeaders + "\n" + signedHeaders + "\n" + payloadHash;
-  Serial.printf("[R2] Canonical Request:\r\n%s\r\n", canonicalRequest.c_str());
+  debug_print("R2", "Canonical Request: %s", canonicalRequest.c_str());
 
   // Create string to sign
   String hashedCanonicalRequest = _sha256(canonicalRequest.c_str(), canonicalRequest.length());
-  Serial.printf("[R2] Hashed Canonical Request: %s\r\n", hashedCanonicalRequest.c_str());
+  debug_print("R2", " Hashed Canonical Request: %s", hashedCanonicalRequest.c_str());
 
   // Get date stamp from timestamp
   char dateStamp[9];
@@ -294,11 +295,11 @@ String R2Module::_generateSignature(const char* method,
 
   String credentialScope =
       String(dateStamp) + "/" + String(region) + "/" + String(service) + "/aws4_request";
-  Serial.printf("[R2] Credential Scope: %s\r\n", credentialScope.c_str());
+  debug_print("R2", " Credential Scope: %s", credentialScope.c_str());
 
   String stringToSign = "AWS4-HMAC-SHA256\n" + String(timestamp) + "\n" + credentialScope + "\n" +
                         hashedCanonicalRequest;
-  Serial.printf("[R2] String to Sign (first 100 chars):\r\n%s\r\n",
+  debug_print("R2", " String to Sign (first 100 chars): %s",
                 stringToSign.substring(0, 100).c_str());
 
   // Calculate signature
@@ -328,13 +329,13 @@ String R2Module::_generateSignature(const char* method,
     sprintf(signatureHex + (i * 2), "%02x", signatureBinary[i]);
   }
   signatureHex[64] = '\0';
-  Serial.printf("[R2] Calculated Signature: %s\r\n", signatureHex);
+  debug_print("R2", " Calculated Signature: %s", signatureHex);
 
   // Build authorization header
   String authorizationHeader = "AWS4-HMAC-SHA256 Credential=" + String(_accessKey) + "/" +
                                credentialScope + ", " + "SignedHeaders=" + signedHeaders + ", " +
                                "Signature=" + String(signatureHex);
-  Serial.printf("[R2] Auth Header length: %d\r\n", authorizationHeader.length());
+  debug_print("R2", " Auth Header length: %d", authorizationHeader.length());
 
   return authorizationHeader;
 }

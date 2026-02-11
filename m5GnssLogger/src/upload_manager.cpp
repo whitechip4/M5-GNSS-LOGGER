@@ -1,5 +1,6 @@
 #include "upload_manager.h"
 #include <time.h>
+#include "util.h"
 
 UploadManager::UploadManager(DisplayModule& display,
                          MyWiFiModule& wifi,
@@ -11,20 +12,20 @@ UploadManager::UploadManager(DisplayModule& display,
 bool UploadManager::stopAndUpload(const GNSS_DATA& gnssData) {
   // WiFi設定があれば、指定SSIDを検索してアップロード
   if (!AppConfig::isWifiConfigured()) {
-    Serial.println("[UPLOAD] WiFi SSID not configured, skipping upload");
+    debug_print("UPLOAD", " WiFi SSID not configured, skipping upload");
     _display.showMessage("Data saved to SD\n");
-    Serial.println("[UPLOAD] Data saved to SD card");
+    debug_print("UPLOAD", " Data saved to SD card");
     delay(2000);
     return false;
   }
 
   const auto* wifiCfg = AppConfig::getWifiConfig();
-  Serial.printf("[UPLOAD] WiFi SSID configured: %s\n", wifiCfg->ssid);
+  debug_print("UPLOAD", " WiFi SSID configured: %s", wifiCfg->ssid);
   _display.showMessage("Checking WiFi...\n");
 
   if (!_wifi.isSSIDAvailable(wifiCfg->ssid)) {
     _display.showMessage("WiFi not found\n");
-    Serial.println("[UPLOAD] WiFi network not found");
+    debug_print("UPLOAD", " WiFi network not found");
     delay(2000);
     return false;
   }
@@ -38,7 +39,7 @@ bool UploadManager::stopAndUpload(const GNSS_DATA& gnssData) {
   if (AppConfig::isR2Configured()) {
     uploadSuccess = _uploadToR2();
   } else {
-    Serial.println("[UPLOAD] R2 credentials not configured, skipping upload");
+    debug_print("UPLOAD", " R2 credentials not configured, skipping upload");
   }
 
   // WiFi切断
@@ -47,7 +48,7 @@ bool UploadManager::stopAndUpload(const GNSS_DATA& gnssData) {
   delay(1000);
 
   _display.showMessage("Data saved to SD\n");
-  Serial.println("[UPLOAD] Data saved to SD card");
+  debug_print("UPLOAD", " Data saved to SD card");
   delay(2000);
 
   return uploadSuccess;
@@ -55,7 +56,7 @@ bool UploadManager::stopAndUpload(const GNSS_DATA& gnssData) {
 
 bool UploadManager::_connectWiFi(const WIFI_CONFIG* wifiCfg) {
   _display.showMessage("WiFi found!\n");
-  Serial.println("[UPLOAD] WiFi network found, attempting connection...");
+  debug_print("UPLOAD", " WiFi network found, attempting connection...");
   delay(1000);
 
   // WiFiに接続
@@ -64,7 +65,7 @@ bool UploadManager::_connectWiFi(const WIFI_CONFIG* wifiCfg) {
     return false;
   }
 
-  Serial.printf("[UPLOAD] WiFi connected successfully\r\n");
+  debug_print("UPLOAD", " WiFi connected successfully");
 
   // NTPで時刻同期
   if (_syncTimeWithNTP()) {
@@ -72,14 +73,14 @@ bool UploadManager::_connectWiFi(const WIFI_CONFIG* wifiCfg) {
   }
 
   // NTP失敗時はGPS時刻を使用
-  Serial.printf("[UPLOAD] NTP sync failed, using GPS time\r\n");
+  debug_print("UPLOAD", " NTP sync failed, using GPS time");
   return true;
 }
 
 bool UploadManager::_syncTimeWithNTP() {
   // タイムゾーンを0にしてシステム時刻をUTCにする
   configTime(0, 0, NTP_SERVER);
-  Serial.printf("[UPLOAD] Syncing time with NTP server: %s\r\n", NTP_SERVER);
+  debug_print("UPLOAD", " Syncing time with NTP server: %s", NTP_SERVER);
 
   // NTP同期を待機（最大10秒）
   int ntpTries = 0;
@@ -98,7 +99,7 @@ bool UploadManager::_syncTimeWithNTP() {
     gmtime_r(&now, &timeinfo);
     char timeStr[64];
     strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S UTC", &timeinfo);
-    Serial.printf("[UPLOAD] NTP sync successful: %s\r\n", timeStr);
+    debug_print("UPLOAD", " NTP sync successful: %s", timeStr);
     return true;
   }
 
@@ -125,15 +126,15 @@ void UploadManager::_setGPSTime(const GNSS_DATA& gnssData) {
   gpsTime.tm_hour = gnssData.hour;
   char timeStr[64];
   strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S UTC", &gpsTime);
-  Serial.printf("[UPLOAD] Using GPS time: %s\r\n", timeStr);
+  debug_print("UPLOAD", " Using GPS time: %s", timeStr);
 }
 
 bool UploadManager::_uploadToR2() {
   const auto* r2Cfg = AppConfig::getR2Config();
-  Serial.printf("[UPLOAD] R2 Account ID: %s\r\n", r2Cfg->accountId);
-  Serial.printf("[UPLOAD] R2 Bucket: %s\r\n", r2Cfg->bucketName);
-  Serial.printf("[UPLOAD] R2 Region: %s\r\n", r2Cfg->region);
-  Serial.printf("[UPLOAD] R2 Access Key length: %d\r\n", strlen(r2Cfg->accessKey));
+  debug_print("UPLOAD", " R2 Account ID: %s", r2Cfg->accountId);
+  debug_print("UPLOAD", " R2 Bucket: %s", r2Cfg->bucketName);
+  debug_print("UPLOAD", " R2 Region: %s", r2Cfg->region);
+  debug_print("UPLOAD", " R2 Access Key length: %d", strlen(r2Cfg->accessKey));
   _r2.begin(r2Cfg->accountId,
             r2Cfg->bucketName,
             r2Cfg->accessKey,
@@ -151,7 +152,7 @@ bool UploadManager::_uploadToR2() {
     char remoteKey[256];
     _generateR2Key(filename, remoteKey, sizeof(remoteKey));
 
-    Serial.printf("[UPLOAD] Uploading: %s -> %s\r\n", filename, remoteKey);
+    debug_print("UPLOAD", " Uploading: %s -> %s", filename, remoteKey);
 
     // アップロード試行（ストリーミング版を使用）
     if (_r2.uploadFileStream(filename, remoteKey)) {
@@ -159,7 +160,7 @@ bool UploadManager::_uploadToR2() {
       _storage.removeFileFromUploadList(filename);
       uploadedCount++;
       _display.showMessage("Uploaded!\n");
-      Serial.printf("[UPLOAD] Upload success: %s\r\n", filename);
+      debug_print("UPLOAD", " Upload success: %s", filename);
       delay(500);
     } else {
       // 失敗したら中止
@@ -170,10 +171,10 @@ bool UploadManager::_uploadToR2() {
 
   // 結果メッセージ
   if (batchFailure) {
-    Serial.println("[UPLOAD] Batch upload failed. Will retry on next startup.");
+    debug_print("UPLOAD", " Batch upload failed. Will retry on next startup.");
     return false;
   } else {
-    Serial.printf("[UPLOAD] Batch upload complete: %d files\r\n", uploadedCount);
+    debug_print("UPLOAD", " Batch upload complete: %d files", uploadedCount);
     return true;
   }
 }

@@ -1,4 +1,5 @@
 #include "storage.h"
+#include "util.h"
 
 #define UNUPLOADED_LIST_FILENAME "/unuploaded.txt"
 #define MAX_FILENAME_LENGTH 128
@@ -42,7 +43,7 @@ void StorageModule::initializeUploadQueue() {
   if (!SD.exists(UNUPLOADED_LIST_FILENAME)) {
     File file = SD.open(UNUPLOADED_LIST_FILENAME, FILE_WRITE);
     if (file) {
-      Serial.println("[STORAGE] Created upload queue file");
+      debug_print("STORAGE", "Created upload queue file");
       file.close();
     }
   }
@@ -75,7 +76,7 @@ bool StorageModule::addFileToUploadList(const char* filename) {
   writeFile.println(filename);
   writeFile.close();
 
-  Serial.printf("[STORAGE] Added to upload queue: %s\r\n", filename);
+  debug_print("STORAGE", "Added to upload queue: %s", filename);
   return true;
 }
 
@@ -122,7 +123,7 @@ bool StorageModule::removeFileFromUploadList(const char* filename) {
   SD.remove(UNUPLOADED_LIST_FILENAME);
   SD.rename("/unuploaded.tmp", UNUPLOADED_LIST_FILENAME);
 
-  Serial.printf("[STORAGE] Removed from queue: %s\r\n", filename);
+  debug_print("STORAGE", "Removed from queue: %s", filename);
   return true;
 }
 
@@ -167,7 +168,7 @@ bool StorageModule::skipFileInUploadList(const char* filename) {
   SD.remove(UNUPLOADED_LIST_FILENAME);
   SD.rename("/unuploaded.tmp", UNUPLOADED_LIST_FILENAME);
 
-  Serial.printf("[STORAGE] Skipped in queue: %s\r\n", filename);
+  debug_print("STORAGE", "Skipped in queue: %s", filename);
   return true;
 }
 
@@ -187,7 +188,7 @@ bool StorageModule::getNextFileToUpload(char* filenameBuffer, size_t bufferSize)
   if (hasLine && strlen(filenameBuffer) > 0) {
     // ファイルが実在するか確認
     if (!SD.exists(filenameBuffer)) {
-      Serial.printf("[STORAGE] WARNING: File doesn't exist: %s\r\n", filenameBuffer);
+      debug_print("STORAGE", "WARNING: File doesn't exist: %s", filenameBuffer);
       // 存在しないファイルをキューから削除して再帰呼び出し
       removeFileFromUploadList(filenameBuffer);
       return getNextFileToUpload(filenameBuffer, bufferSize);

@@ -11,10 +11,8 @@
 #include "my_wifi.h"
 #include "r2.h"
 
-// Include auto-generated config from .env file
-#ifdef CONFIG_ENV_H
-#include "config_env.h"
-#endif
+// Include configuration from .env.h file
+#include ".env.h"
 
 // グローバルインスタンス
 GnssModule gnssModule(Serial2);

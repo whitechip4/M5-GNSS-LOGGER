@@ -1,0 +1,15 @@
+name = "gpx-converter"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# R2 Bucket binding
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "hobby-data"
+
+# Triggers - Watch for object creation in R2
+[[r2_buckets.bucket]]
+bucket_name = "hobby-data"
+
+[triggers]
+crons = []

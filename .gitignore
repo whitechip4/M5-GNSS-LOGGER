@@ -1,0 +1,32 @@
+# PlatformIO
+.pio/
+.vscode/.browse.c_cppdb*
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/ipch
+
+# M5Stack Configuration
+m5GnssLogger/.env
+
+# Cloudflare Workers Environment Variables
+cloud/workers/gpx-converter/.dev.vars
+cloud/workers/gpx-converter/.dev.vars.local
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+*.bin
+*.elf
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

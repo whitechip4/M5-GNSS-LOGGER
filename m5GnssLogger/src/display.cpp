@@ -1,6 +1,8 @@
 #include "display.h"
 
-DisplayModule::DisplayModule() : _lcd(), _sprite(&_lcd) {
+DisplayModule::DisplayModule()
+    : _lcd()
+    , _sprite(&_lcd) {
   // _sprite holds a reference to _lcd
 }
 
@@ -123,8 +125,7 @@ void DisplayModule::update(const GNSS_DATA& data,
   _sprite.setTextColor(COLOR_TEXT);
   _sprite.print("Status : ");
 
-  bool isRecording = isGpsOk && isSdCardOk &&
-                     batteryVoltage > BATTERY_VOLTAGE_THRESHOLD;
+  bool isRecording = isGpsOk && isSdCardOk && batteryVoltage > BATTERY_VOLTAGE_THRESHOLD;
   if (isRecording) {
     _sprite.setTextColor(COLOR_STATUS_OK);
     _sprite.println("Recording");

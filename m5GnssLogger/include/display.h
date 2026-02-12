@@ -15,6 +15,7 @@ public:
               float batteryVoltage,
               bool isGpsOk,
               bool isSdCardOk,
+              bool isRecording,
               DISPLAY_MODE mode);
   void clear();
   void showMessage(const char* message);
@@ -52,6 +53,7 @@ public:
               float batteryVoltage,
               bool isGpsOk,
               bool isSdCardOk,
+              bool isRecording,
               DISPLAY_MODE mode);
   void clear();
   void showMessage(const char* message);

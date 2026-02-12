@@ -183,7 +183,7 @@ void loop() {
 
     // Display update (configurable frequency)
     if (millis() - lastDisplayUpdate >= DELAY_DISPLAY_UPDATE_MS) {
-      displayModule.update(gnssData, batVoltage, isGpsOk, isSdCardOk, viewMode);
+      displayModule.update(gnssData, batVoltage, isGpsOk, isSdCardOk, isRecording, viewMode);
       lastDisplayUpdate = millis();
     }
 

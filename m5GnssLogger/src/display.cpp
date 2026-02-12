@@ -117,6 +117,7 @@ void DisplayModule::update(const GNSS_DATA& data,
                            float batteryVoltage,
                            bool isGpsOk,
                            bool isSdCardOk,
+                           bool isRecording,
                            DISPLAY_MODE mode) {
   // Clear sprite buffer (off-screen)
   clear();
@@ -125,7 +126,6 @@ void DisplayModule::update(const GNSS_DATA& data,
   _sprite.setTextColor(COLOR_TEXT);
   _sprite.print("Status : ");
 
-  bool isRecording = isGpsOk && isSdCardOk && batteryVoltage > BATTERY_VOLTAGE_THRESHOLD;
   if (isRecording) {
     _sprite.setTextColor(COLOR_STATUS_OK);
     _sprite.println("Recording");
@@ -133,6 +133,9 @@ void DisplayModule::update(const GNSS_DATA& data,
     _sprite.setTextColor(COLOR_STATUS_ERROR);
     _sprite.println("Stop");
   }
+
+  // Reset text color to white for subsequent content
+  _sprite.setTextColor(COLOR_TEXT);
 
   // Draw mode-specific content to sprite
   if (mode == DISPLAY_MODE_DETAIL) {

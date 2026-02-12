@@ -171,9 +171,23 @@ void loop() {
   static uint8_t preSecond = 0;
   static uint32_t lastDisplayUpdate = 0;
 
+  // Button processing (every loop) - for better response
+  M5.update();
+  vibrationProcess();
+
+  // Button A: change view mode
+  if (M5.BtnA.wasPressed()) {
+    viewMode = (viewMode == DISPLAY_MODE_DETAIL) ? DISPLAY_MODE_SIMPLE : DISPLAY_MODE_DETAIL;
+    vibration(200);
+  }
+
+  // Button B: stop recording (with confirmation)
+  if (M5.BtnB.wasPressed() && isRecording) {
+    _showStopConfirmationDialog();
+  }
+
   // 100msec job
   if (!(millis() % LOOP_INTERVAL_MS)) {
-    M5.update();
     gnssModule.update();
     gnssModule.getData(gnssData);
 
@@ -200,22 +214,6 @@ void loop() {
       if (isRecording && isGpsOk) {
         storageModule.writeData(gnssData, fileName);
       }
-    }
-
-    // button A pressed -> change view mode
-    if (M5.BtnA.wasPressed()) {
-      viewMode = (viewMode == DISPLAY_MODE_DETAIL) ? DISPLAY_MODE_SIMPLE : DISPLAY_MODE_DETAIL;
-      vibration(200);
-    }
-
-    // button B pressed -> stop recording (with confirmation)
-    if (M5.BtnB.wasPressed() && isRecording) {
-      _showStopConfirmationDialog();
-    }
-
-    // 1msec job
-    if (!(millis() % LOOP_INTERVAL_VIBRATION_MS)) {
-      vibrationProcess();
     }
   }
 }

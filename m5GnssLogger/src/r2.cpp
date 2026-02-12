@@ -47,13 +47,13 @@ void R2Module::_buildEndpoint() {
 }
 
 bool R2Module::uploadFile(const char* localFilePath, const char* remoteKey) {
-  displayModule.showMessage("Reading file...\n");
+  displayModule.logMessage("Reading file...");
   debug_print("R2", " Opening file: %s", localFilePath);
 
   // Read file from SD card
   File file = SD.open(localFilePath, FILE_READ);
   if (!file) {
-    displayModule.showMessage("File not found\n");
+    displayModule.logMessage("File not found");
     debug_print("R2", " File not found!");
     return false;
   }
@@ -61,7 +61,7 @@ bool R2Module::uploadFile(const char* localFilePath, const char* remoteKey) {
   size_t fileSize = file.size();
   debug_print("R2", " File size: %u bytes", fileSize);
   if (fileSize == 0) {
-    displayModule.showMessage("Empty file\n");
+    displayModule.logMessage("Empty file");
     debug_print("R2", " Empty file!");
     file.close();
     return false;
@@ -71,7 +71,7 @@ bool R2Module::uploadFile(const char* localFilePath, const char* remoteKey) {
   char* buffer = (char*)malloc(fileSize + 1);
   debug_print("R2", " Memory allocated: %u bytes", fileSize + 1);
   if (!buffer) {
-    displayModule.showMessage("Memory error\n");
+    displayModule.logMessage("Memory error");
     debug_print("R2", " Memory allocation failed!");
     file.close();
     return false;
@@ -83,7 +83,7 @@ bool R2Module::uploadFile(const char* localFilePath, const char* remoteKey) {
 
   debug_print("R2", " Bytes read: %u / %u", bytesRead, fileSize);
   if (bytesRead != fileSize) {
-    displayModule.showMessage("Read error\n");
+    displayModule.logMessage("Read error");
     debug_print("R2", " Read error!");
     free(buffer);
     return false;
@@ -99,12 +99,12 @@ bool R2Module::uploadFile(const char* localFilePath, const char* remoteKey) {
 }
 
 bool R2Module::uploadFileStream(const char* localFilePath, const char* remoteKey) {
-  displayModule.showMessage("Preparing upload...\n");
+  displayModule.logMessage("Preparing upload...");
   debug_print("R2", " Opening file: %s", localFilePath);
 
   File file = SD.open(localFilePath, FILE_READ);
   if (!file) {
-    displayModule.showMessage("File not found\n");
+    displayModule.logMessage("File not found");
     debug_print("R2", " File not found!");
     return false;
   }
@@ -112,13 +112,13 @@ bool R2Module::uploadFileStream(const char* localFilePath, const char* remoteKey
   size_t fileSize = file.size();
   debug_print("R2", " File size: %u bytes", fileSize);
   if (fileSize == 0) {
-    displayModule.showMessage("Empty file\n");
+    displayModule.logMessage("Empty file");
     debug_print("R2", " Empty file!");
     file.close();
     return false;
   }
 
-  displayModule.showMessage("Uploading to R2...\n");
+  displayModule.logMessage("Uploading to R2...");
   bool result = _uploadStreamData(file, fileSize, remoteKey);
 
   file.close();
@@ -178,11 +178,11 @@ bool R2Module::_uploadStreamData(Stream& stream, size_t dataSize, const char* re
   bool success = (httpCode == 200);
 
   if (success) {
-    displayModule.showMessage("Upload successful!\n");
+    displayModule.logMessage("Upload successful!");
     debug_print("R2", " Upload successful!");
   } else {
     String response = http.getString();
-    displayModule.showMessage("Upload failed\n");
+    displayModule.logMessage("Upload failed");
     debug_print("R2", " Upload failed - Code: %d, Response: %s", httpCode, response.c_str());
   }
 
@@ -193,7 +193,7 @@ bool R2Module::_uploadStreamData(Stream& stream, size_t dataSize, const char* re
 }
 
 bool R2Module::uploadData(const char* data, size_t dataSize, const char* remoteKey) {
-  displayModule.showMessage("Uploading to R2...\n");
+  displayModule.logMessage("Uploading to R2...");
 
   WiFiClientSecure client;
   client.setInsecure();  // For HTTPS
@@ -248,11 +248,11 @@ bool R2Module::uploadData(const char* data, size_t dataSize, const char* remoteK
   bool success = (httpCode == 200);
 
   if (success) {
-    displayModule.showMessage("Upload successful!\n");
+    displayModule.logMessage("Upload successful!");
     debug_print("R2", " Upload successful!");
   } else {
     String response = http.getString();
-    displayModule.showMessage("Upload failed\n");
+    displayModule.logMessage("Upload failed");
     debug_print("R2", " Upload failed - Code: %d, Response: %s", httpCode, response.c_str());
   }
 

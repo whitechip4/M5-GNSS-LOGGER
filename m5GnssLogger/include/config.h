@@ -68,12 +68,17 @@ typedef struct {
 // ============================================================================
 // Timing Constants (milliseconds)
 // ============================================================================
+// Display update frequency (Hz)
+// Recommended: 1-5 Hz for GNSS logger
+#define DISPLAY_UPDATE_INTERVAL_HZ 1
+
+// Display update interval in milliseconds (calculated from Hz)
+#define DELAY_DISPLAY_UPDATE_MS (1000 / DISPLAY_UPDATE_INTERVAL_HZ)
 #define DELAY_BUTTON_POLL_MS 50
 #define DELAY_GNSS_STABILITY_CHECK_MS 500
 #define DELAY_WIFI_PROGRESS_MS 500
 #define DELAY_NTP_RETRY_MS 500
 #define DELAY_GENERAL_TIMING_MS 1000
-#define DELAY_DISPLAY_UPDATE_MS 1000
 #define DELAY_UPLOAD_MESSAGE_MS 2000
 #define DELAY_GNSS_INIT_MS 5000
 #define DELAY_NTP_SYNC_MS 5000
@@ -102,7 +107,8 @@ typedef struct {
  */
 typedef enum {
   DISPLAY_MODE_DETAIL = 0,
-  DISPLAY_MODE_SIMPLE = 1
+  DISPLAY_MODE_SIMPLE = 1,
+  DISPLAY_MODE_LOG = 2
 } DISPLAY_MODE;
 
 // ============================================================================

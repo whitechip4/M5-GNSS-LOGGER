@@ -27,7 +27,7 @@ bool MyWiFiModule::connect(unsigned long timeout) {
     return false;
   }
 
-  displayModule.showMessage("Connecting to WiFi...\n");
+  displayModule.logMessage("Connecting to WiFi...");
   debug_print("WiFi", "Connecting to: %s", _mySsid);
 
   WiFi.begin(_mySsid, _myPassword);
@@ -35,19 +35,19 @@ bool MyWiFiModule::connect(unsigned long timeout) {
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < timeout) {
     delay(500);
-    displayModule.showMessage(".");
+    displayModule.logProgress(".");
     debug_print("WiFi", "Status: %d", WiFi.status());
   }
 
   if (WiFi.status() == WL_CONNECTED) {
     _myConnected = true;
-    displayModule.showMessage("WiFi connected!\n");
+    displayModule.logMessage("WiFi connected!");
     debug_print("WiFi", "Connected! IP: %s", WiFi.localIP().toString().c_str());
     delay(1000);
     return true;
   } else {
     _myConnected = false;
-    displayModule.showMessage("WiFi connection failed\n");
+    displayModule.logMessage("WiFi connection failed");
     debug_print("WiFi", "Connection failed after %lu ms", millis() - start);
     delay(2000);
     return false;
@@ -58,7 +58,7 @@ void MyWiFiModule::disconnect() {
   if (_myConnected) {
     WiFi.disconnect();
     _myConnected = false;
-    displayModule.showMessage("WiFi disconnected\n");
+    displayModule.logMessage("WiFi disconnected");
   }
 }
 
@@ -76,7 +76,7 @@ bool MyWiFiModule::isSSIDAvailable(const char* targetSSID) {
     return false;
   }
 
-  displayModule.showMessage("Scanning WiFi...\n");
+  displayModule.logMessage("Scanning WiFi...");
 
   int numNetworks = WiFi.scanNetworks();
   debug_print("WiFi", "Scanning... Found %d networks", numNetworks);

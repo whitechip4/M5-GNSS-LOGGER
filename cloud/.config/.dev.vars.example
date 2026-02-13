@@ -9,7 +9,7 @@ CLOUDFLARE_ACCOUNT_ID=your_account_id_here
 CLOUDFLARE_API_TOKEN=your_api_token_here
 
 # R2 Bucket Name
-R2_BUCKET_NAME=hobby-data
+R2_BUCKET_NAME=your_bucket_name_here
 
 # Optional: Cron secret for scheduled triggers
 CRON_SECRET=your_secret_here

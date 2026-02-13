@@ -49,7 +49,8 @@ public:
    * @param timezoneOffset タイムゾーンオフセット（時間単位、例: JST=+9）
    * @return アップロード成功時true
    */
-  bool uploadFileStream(const char* localFilePath, const char* remoteKey, int8_t timezoneOffset = 9);
+  bool
+  uploadFileStream(const char* localFilePath, const char* remoteKey, int8_t timezoneOffset = 9);
 
   /**
    * @brief ファイルをR2にアップロード（文字列データ）
@@ -59,7 +60,8 @@ public:
    * @param timezoneOffset タイムゾーンオフセット（時間単位、例: JST=+9）
    * @return アップロード成功時true
    */
-  bool uploadData(const char* data, size_t dataSize, const char* remoteKey, int8_t timezoneOffset = 9);
+  bool
+  uploadData(const char* data, size_t dataSize, const char* remoteKey, int8_t timezoneOffset = 9);
 
 #ifdef TESTING
   // Make private methods accessible for testing
@@ -104,7 +106,10 @@ private:
    * @param timezoneOffset タイムゾーンオフセット（時間単位）
    * @return アップロード成功時true
    */
-  bool _uploadStreamData(Stream& stream, size_t dataSize, const char* remoteKey, int8_t timezoneOffset = 9);
+  bool _uploadStreamData(Stream& stream,
+                         size_t dataSize,
+                         const char* remoteKey,
+                         int8_t timezoneOffset = 9);
 
 #ifndef TESTING
   /**

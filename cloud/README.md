@@ -7,7 +7,7 @@ M5-GNSS-LOGGER uses a hybrid Cloudflare deployment to convert CSV files uploaded
 **Architecture:**
 - **Scheduler Worker**: Triggers every hour via cron, calls Pages Functions via HTTP
 - **Pages Functions**: Main GPX conversion logic with Node.js runtime (handles 10MB+ files)
-- **R2 Storage**: `hobby-data` bucket stores CSV and GPX files
+- **R2 Storage**: `<your bucket name>` bucket stores CSV and GPX files
 
 ## Deployment Environments
 
@@ -68,7 +68,7 @@ cloud/pages-functions/gpx-converter/.dev.vars
 Required environment variables:
 - `CLOUDFLARE_ACCOUNT_ID` - Cloudflare account ID
 - `CLOUDFLARE_API_TOKEN` - API token with Workers Scripts (Edit) + R2 (Edit) permissions
-- `R2_BUCKET_NAME` - R2 bucket name (e.g., `hobby-data`)
+- `R2_BUCKET_NAME` - R2 bucket name (e.g., `gnss-data`)
 - `PAGES_FUNCTION_URL` - URL to Pages Functions endpoint (e.g., `https://<project-name>.gpx-converter.pages.dev/gpx-converter`)
 
 ## Deployment
@@ -81,20 +81,6 @@ cd cloud/workers/gpx-converter
 ./deploy.sh
 
 # Deploy Pages Functions
-cd cloud/pages-functions/gpx-converter
-./deploy.sh
-```
-
-### Re-deployment
-
-After code changes:
-
-```bash
-# Re-deploy Scheduler Worker
-cd cloud/workers/gpx-converter
-./deploy.sh
-
-# Re-deploy Pages Functions
 cd cloud/pages-functions/gpx-converter
 ./deploy.sh
 ```

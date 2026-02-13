@@ -36,7 +36,7 @@ cp ../../.config/.dev.vars.example ../../.config/.dev.vars
 Edit `../../.config/.dev.vars` with your Cloudflare account ID:
 ```
 CLOUDFLARE_ACCOUNT_ID=your_account_id_here
-R2_BUCKET_NAME=hobby-data
+R2_BUCKET_NAME=your_bucket_name_here
 CLOUDFLARE_API_TOKEN=your_api_token
 ```
 
@@ -71,7 +71,7 @@ Make sure your R2 bucket is properly configured in `wrangler.toml`:
 ```toml
 [[r2_buckets]]
 binding = "BUCKET"
-bucket_name = "hobby-data"
+bucket_name = "<your_bucket_name>"
 ```
 
 ## R2 Event Triggers
@@ -136,7 +136,3 @@ npm install
 1. Check the CSV file format matches expected format
 2. Verify the file is in `gnss-data/` directory
 3. Check worker logs for errors
-
-## License
-
-MIT

@@ -1,240 +1,389 @@
 # M5-GNSS-LOGGER
 
-M5Stack Core2を使用してGNSSデータを記録し、Cloudflare R2へ自動アップロードしてGPX形式に変換するシステム
+M5Stack Core2でGNSSデータを記録し、Cloudflare R2を経由してGPX形式に自動変換するエンドツーエンドのロギングシステム
 
-## 機能
+## 概要
 
-### M5Stack Core2 (m5GnssLogger)
-- ✅ GNSSデータの1秒ごとの記録
-- ✅ SDカードへのCSV保存
-- ✅ ボタンBで記録停止（確認ダイアログ付き）
-- ✅ 指定WiFiアクセスポイント検出時の自動R2アップロード
-- ✅ 有効データと生データの両方を保存
-- ✅ 画面表示モード切り替え（ボタンA）
+M5-GNSS-LOGGERは、3つの主要コンポーネントからなるGNSS（GPS）ロギングシステムです：
 
-### Cloudflare Workers (cloud/workers/gpx-converter)
-- ✅ R2への新規CSVファイル追加を検知
-- ✅ CSVからGPX形式への自動変換
-- ✅ 変換後のGPXファイルをR2へ保存
-- ✅ 日付ごとのフォルダ構成
+1. **M5Stack Core2ファームウェア** ([m5GnssLogger/](m5GnssLogger/)) - GPSデータを1秒ごとに取得し、WiFi接続時にCloudflare R2に自動アップロード
+2. **Cloudflare Pages Functions** ([cloud/pages-functions/gpx-converter/](cloud/pages-functions/gpx-converter/)) - R2上のCSVファイルをGPX 1.1形式に変換
+3. **Cloudflare Scheduler Worker** ([cloud/workers/gpx-converter-scheduler/](cloud/workers/gpx-converter-scheduler/)) - 毎時自動実行またはHTTP手動トリガーでPages Functionsを呼び出し
 
-## プロジェクト構成
+### 特徴
+
+- **高精度GNSSデータ記録** - u-blox NEO-M9N対応、HDOP・衛星数・位置変化によるデータフィルタリング
+- **自動R2アップロード** - 指定したWiFiアクセスポイント検出時に自動接続し、CSVデータをアップロード
+- **NTP時刻同期** - WiFi接続時にNTPサーバーと同期、失敗時はGPS時刻でフォールバック
+- **スケーラブルなGPX変換** - Cloudflareインフラによる自動処理、4MB超ファイルの自動分割（Google My Maps対応）
+- **タイムゾーン処理** - カスタムメタデータによるタイムゾーン情報の保存とGPXへの反映
+
+## アーキテクチャ
+
+### システム構成図
+
+TODO:後でDraw.ioとかで図描きたい
 
 ```
-M5-GNSS-LOGGER/
-├── m5GnssLogger/          # M5Stackファームウェア
-│   ├── include/
-│   │   ├── config.h       # 設定定義
-│   │   ├── display.h      # 表示モジュール
-│   │   ├── gnss.h         # GNSSモジュール
-│   │   ├── storage.h      # SDカードモジュール
-│   │   ├── wifi.h         # WiFiモジュール（新規）
-│   │   └── r2.h          # R2アップロードモジュール（新規）
-│   ├── src/
-│   │   ├── main.cpp       # メイン処理（更新）
-│   │   ├── display.cpp
-│   │   ├── gnss.cpp
-│   │   ├── storage.cpp
-│   │   ├── wifi.cpp        # WiFi実装（新規）
-│   │   └── r2.cpp         # R2実装（新規）
-│   ├── platformio.ini     # PlatformIO設定（更新）
-│   └── .env.example      # 設定テンプレート（新規）
-└── cloud/                # Cloudflare Workers（新規）
-    └── workers/
-        └── gpx-converter/
-            ├── src/
-            │   └── index.ts       # Worker実装
-            ├── wrangler.toml       # Wrangler設定
-            ├── package.json
-            ├── tsconfig.json
-            ├── .dev.vars.example # 環境変数テンプレート
-            └── README.md
+┌─────────────────┐
+│  M5Stack Core2  │
+│  (m5GnssLogger) │
+└────────┬────────┘
+         │ GNSSデータ (1秒ごと)
+         ▼
+   ┌─────────┐
+   │ SDカード │ CSV保存
+   └────┬────┘
+        │
+        │ WiFi検出時
+        ▼
+┌─────────────────┐
+│  Cloudflare R2  │ ← CSVアップロード
+└────────┬────────┘
+         │
+         │ Scheduler Worker (Cron毎時0分 / HTTPトリガー)
+         ▼
+┌─────────────────────┐
+│  Pages Functions     │ ← CSV → GPX変換
+│  (gpx-converter)    │
+└────────┬────────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Cloudflare R2  │ ← GPXファイル保存
+│  (gnss-data/    │    (gnss-data/YYYYMMDD/gpx/*.gpx)
+│   YYYYMMDD/gpx) │
+└─────────────────┘
 ```
 
-## セキュリティについて
+### 3つの主要コンポーネント
 
-このプロジェクトは公開レポジトリです。機密情報を含むファイルは`.gitignore`によってバージョン管理から除外されています：
+#### 1. M5Stack Core2ファームウェア (m5GnssLogger/)
 
-- `m5GnssLogger/.env` - WiFi/R2設定ファイル
-- `cloud/workers/gpx-converter/.dev.vars` - Workers環境変数
+GNSSデータの取得、SDカード保存、WiFi接続時のR2アップロードを担当します。
 
-これらのファイルは**絶対にコミットしないでください**。代わりに以下のテンプレートファイルを使用してください：
+- **データ取得**: 1秒ごとのGNSSデータ取得（u-bloxライブラリ使用）
+- **データ保存**: SDカードへのCSV保存（フィルタリング済みデータ + 生データ）
+- **WiFi接続**: 指定SSID検出時に自動接続
+- **R2アップロード**: AWS Signature V4による直接PUTアップロード
+- **NTP同期**: WiFi接続時の時刻同期（失敗時はGPS時刻でフォールバック）
 
-- `m5GnssLogger/.env.example` - M5Stack設定テンプレート
-- `cloud/workers/gpx-converter/.dev.vars.example` - Workers設定テンプレート
+#### 2. Cloudflare Pages Functions (cloud/pages-functions/gpx-converter/)
 
-### 実際の設定方法
+R2上のCSVファイルをGPX 1.1形式に変換します。
 
-1. テンプレートファイルをコピー
-   ```bash
-   # M5Stack用
-   cp m5GnssLogger/.env.example m5GnssLogger/.env
-   
-   # Workers用
-   cp cloud/workers/gpx-converter/.dev.vars.example cloud/workers/gpx-converter/.dev.vars
-   ```
+- **GPX変換**: CSVからGPX 1.1形式への変換
+- **ファイル分割**: 4MB超ファイルの自動分割（Google My Maps対応）
+- **タイムゾーン処理**: CSVメタデータからタイムゾーン情報を読み取り、GPXのUTC時刻に変換
+- **R2バインディング**: `BUCKET`バインディング経由でR2にアクセス
 
-2. 実際の設定値を入力
-3. 実ファイル（`.env`や`.dev.vars`）は`.gitignore`によって保護されます
+#### 3. Cloudflare Scheduler Worker (cloud/workers/gpx-converter-scheduler/)
 
-### 機密情報の一覧
+Pages Functionsを定期的または手動でトリガーします。
 
-以下の情報は機密情報として扱われます：
-- WiFi SSIDとパスワード
-- Cloudflare Account ID
-- R2 Access KeyとSecret Key
-- APIトークン
+- **Cronトリガー**: 毎時0分に自動実行（`"0 * * * *"`）
+- **HTTPトリガー**: `POST /trigger`で手動実行可能
+- **ヘルスチェック**: `GET /test`で動作確認
 
-これらの値を誤ってGitHubなどに公開しないよう、十分に注意してください。
+## クイックスタート
 
-## セットアップ
+### 前提条件
+
+- M5Stack Core2 + GNSS Unit (NEO-M9N)
+- PlatformIO対応のIDE（VS Code + PlatformIO拡張など）
+- Cloudflareアカウント（無料枠で動作可能）
+- Node.js 18+ （Cloudflare Workersデプロイ用）
 
 ### 1. Cloudflare R2の設定
 
-1. Cloudflare DashboardでR2バケットを作成
-   - バケット名: `hobby-data`（または任意の名前）
-   - リージョン: 任意
+Cloudflare DashboardでR2バケットを作成します：
 
-2. R2 APIトークンを作成
+1. **R2バケット作成**
+   - Dashboard → R2 → Create Bucket
+   - バケット名: 任意の名前（例: `gnss-bucket`）
+
+2. **R2 APIトークン作成**
    - R2 → Manage R2 API Tokens → Create API Token
    - パーミッション: Object Read & Write
    - 作成されたAccess KeyとSecret Keyを保存
 
-### 2. Cloudflare Workersのセットアップ
+### 2. Cloudflare設定ファイルの作成
 
 ```bash
-cd cloud/workers/gpx-converter
+# 設定テンプレートをコピー
+cp cloud/.config/.dev.vars.example cloud/.config/.dev.vars
+```
 
-# 依存パッケージのインストール
+`.dev.vars`を編集して以下の値を設定：
+
+```bash
+# Cloudflare Account ID (Dashboardの右下に表示)
+CLOUDFLARE_ACCOUNT_ID=your_account_id_here
+
+# Cloudflare API Token (Workers ScriptsとR2の編集権限が必要)
+# 作成場所: https://dash.cloudflare.com/profile/api-tokens
+CLOUDFLARE_API_TOKEN=your_api_token_here
+
+# R2 Bucket Name (手順1で作成したバケット名)
+R2_BUCKET_NAME=your_bucket_name_here
+
+# Pages Function URL (後ほどデプロイ後に確認)
+PAGES_FUNCTION_URL=https://gpx-converter.<your-project>.pages.dev/gpx-converter
+```
+
+### 3. M5Stack設定ファイルの作成
+
+```bash
+# 設定テンプレートをコピー
+cp m5GnssLogger/include/.env.example.h m5GnssLogger/include/.env.h
+```
+
+`.env.h`を編集して以下の値を設定：
+
+```cpp
+// 接続しにいくWiFiホットスポットの SSIDとパスワード
+#define WIFI_SSID "your_wifi_ssid"
+#define WIFI_PASSWORD "your_wifi_password"
+
+// R2設定
+#define R2_ACCOUNT_ID "your_account_id_here"
+#define R2_BUCKET_NAME "your_bucket_name_here"
+#define R2_ACCESS_KEY "your_access_key_here"
+#define R2_SECRET_KEY "your_secret_key_here"
+#define R2_REGION "auto"
+```
+
+### 4. Scheduler Workerのデプロイ
+
+```bash
+cd cloud/workers/gpx-converter-scheduler
+
+# 依存関係をインストール
 npm install
 
-# 環境変数の設定（テンプレートからコピー）
-cp .dev.vars.example .dev.vars
-# .dev.vars を編集してCloudflare Account IDを入力
-
-# Cloudflareにログイン
-npx wrangler login
-
-# Workerをデプロイ
-npm run deploy
+# デプロイ（スクリプトが環境変数を自動設定）
+bash deploy.sh
 ```
 
-### 3. R2バインディングの設定
+デプロイが成功すると、Worker URLが表示されます。このURLを`.dev.vars`の`SCHEDULER_WORKER_URL`に設定してください。
 
-Cloudflare DashboardでWorkers設定を確認:
-1. Workers & Pages → gpx-converter
-2. Settings → Variables & Secrets
-3. R2 Bucket Bindingsを確認（自動で設定されているはず）
+### 5. Pages Functionsのデプロイ
 
-### 4. M5Stackの設定
+```bash
+cd cloud/pages-functions/gpx-converter
+
+# デプロイ（スクリプトが環境変数を自動設定）
+bash deploy.sh
+```
+
+デプロイが成功すると、Pages Functions URLが表示されます。このURLを`.dev.vars`の`PAGES_FUNCTION_URL`に設定し、Scheduler Workerを再デプロイしてください。
+
+### 6. M5Stackファームウェアのビルド
 
 ```bash
 cd m5GnssLogger
 
-# 設定ファイルを作成（テンプレートからコピー）
-cp .env.example .env
-
-# .envを編集（機密情報を入力）
-```
-
-`.env`ファイルの内容（機密情報を含みます）:
-```env
-WIFI_SSID=your_wifi_ssid
-WIFI_PASSWORD=your_wifi_password
-R2_ACCOUNT_ID=your_account_id_here
-R2_BUCKET_NAME=hobby-data
-R2_ACCESS_KEY=your_access_key_here
-R2_SECRET_KEY=your_secret_key_here
-R2_REGION=auto
-```
-
-### 5. M5Stackファームウェアのビルド
-
-```bash
-cd m5GnssLogger
-
-# 依存関係のインストール
+# 依存関係をインストール
 pio pkg install
 
-# ビルドとアップロード
-pio run --target upload
+# ビルド
+pio run --environment m5stack-core2
+
+# M5Stackにアップロード
+pio run --target upload --environment m5stack-core2
 ```
 
-## 使用方法
+## M5Stackファームウェア
 
-### M5Stackの操作
-
-| ボタン | 機能 |
-|--------|--------|
-| 電源ON | 自動で記録開始 |
-| ボタンA | 表示モード切り替え（詳細/シンプル） |
-| ボタンB | 記録停止（確認ダイアログ表示） |
-| ボタンB (確認時) | 記録停止を確定 |
-| ボタンC (確認時) | キャンセルして記録継続 |
-
-### アップロードの流れ
-
-1. 記録停止時、設定されたWiFi SSIDをスキャン
-2. 該当SSIDが見つかった場合、WiFiに接続
-3. R2へCSVファイルをアップロード:
-   - `gnss-data/YYYYMMDD/gnss_csv_data_YYYYMMDD_HHMMSS.csv`
-   - `gnss-data/YYYYMMDD/gnss_csv_data_YYYYMMDD_HHMMSS_raw.csv`
-4. WiFiを切断
-5. SDカードにはファイルを残す
-
-### GPX変換の流れ
-
-1. R2へ新しいCSVファイルがアップロードされる
-2. Cloudflare Workerが自動的にトリガー
-3. CSVを解析してGPX形式に変換
-4. GPXファイルをR2へ保存:
-   - `gnss-data/YYYYMMDD/gpx/gnss_csv_data_YYYYMMDD_HHMMSS.gpx`
-
-## データフォーマット
-
-### CSV形式
-
-ヘッダー行:
-```
-date,time,lat,lng,alt,spd,siv,hdop
-```
-
-データ行例:
-```
-2024/01/01,12:00:00,35.6895,139.6917,50.0,5.5,8,1.2
-2024/01/01,12:00:01,35.6896,139.6918,50.1,5.6,8,1.1
-```
-
-### GPX形式
-
-標準的なGPX 1.1形式で以下の情報を含みます:
-- トラックポイント（緯度・経度・高度）
-- タイムスタンプ
-- 速度
-- 衛星数
-- HDOP（精度指標）
-
-## 開発
-
-### M5Stackのデバッグ
+### ビルドとデプロイ
 
 ```bash
 cd m5GnssLogger
-pio run --target upload
+
+# 依存関係をインストール
+pio pkg install
+
+# ビルド
+pio run --environment m5stack-core2
+
+# M5Stackにアップロード
+pio run --target upload --environment m5stack-core2
+
+# シリアル出力をモニター（デバッグ用）
 pio device monitor
 ```
 
-### Workersのローカルテスト
+## Cloudflare Scheduler Worker
+
+### 機能
+
+Scheduler Workerは、Pages Functionsをトリガーするための軽量なWorkerです。
+
+- **Cronトリガー**: 毎時0分に自動実行（`[triggers] cron = ["0 * * * *"]`）
+- **HTTPトリガー**: `POST /trigger`で手動実行
+- **ヘルスチェック**: `GET /test`で動作確認
+
+### 環境変数
+
+[wrangler.toml](cloud/workers/gpx-converter-scheduler/wrangler.toml)または`.dev.vars`で設定：
+
+| 変数 | 必須 | 説明 |
+|------|------|------|
+| `PAGES_FUNCTION_URL` | ✓ | Pages FunctionsのURL（例: `https://gpx-converter.example.pages.dev/gpx-converter`） |
+
+### デプロイ
 
 ```bash
-cd cloud/workers/gpx-converter
-npm run dev
+cd cloud/workers/gpx-converter-scheduler
+
+# 依存関係をインストール
+npm install
+
+# デプロイ（スクリプトが環境変数を自動設定）
+bash deploy.sh
 ```
 
-### Workersのログ確認
+### エンドポイント
+
+- `GET /test` - ヘルスチェック
+- `POST /trigger` - 手動トリガー
+
+## Cloudflare Pages Functions
+
+### 機能
+
+Pages Functionsは、R2上のCSVファイルをGPX形式に変換します。
+
+- **CSV → GPX変換**: 標準的なGPX 1.1形式に変換
+- **ファイル分割**: 4MB超のファイルを自動分割（Google My Mapsの5MB制限に対応）
+- **タイムゾーン処理**: CSVのメタデータからタイムゾーンを読み取り、GPXのUTC時刻に変換
+- **再実行安全**: 既にGPXが存在する場合はスキップ
+
+### R2バインディング
+
+[wrangler.toml](cloud/pages-functions/gpx-converter/wrangler.toml)でR2バケットをバインド：
+
+```toml
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "${R2_BUCKET_NAME}"
+```
+
+
+### デプロイ
 
 ```bash
-npm run tail
+cd cloud/pages-functions/gpx-converter
+
+# デプロイ（スクリプトが環境変数を自動設定）
+bash deploy.sh
 ```
 
+## セキュリティ
 
+機密ファイルをコミットしないでください。これらは`.gitignore`によってバージョン管理から除外されています：
+
+- `m5GnssLogger/include/.env.h` - WiFi/R2設定ファイル
+- `cloud/.config/.dev.vars` - Cloudflare Workers/Pages環境変数
+
+代わりに以下のテンプレートファイルを使用してください：
+
+- `m5GnssLogger/include/.env.example.h` - M5Stack設定テンプレート
+- `cloud/.config/.dev.vars.example` - Cloudflare設定テンプレート
+
+### 実際の設定方法
+
+```bash
+# M5Stack用
+cp m5GnssLogger/include/.env.example.h m5GnssLogger/include/.env.h
+
+# Cloudflare用
+cp cloud/.config/.dev.vars.example cloud/.config/.dev.vars
+```
+
+`.env.h`と`.dev.vars`を編集して実際の値を入力してください。
+
+### 機密情報の一覧
+
+以下の情報は機密情報として扱われます：
+
+- WiFi SSIDとパスワード
+- Cloudflare Account ID
+- R2 Access KeyとSecret Key
+- Cloudflare API Token
+
+これらの値を誤ってGitHubなどに公開しないよう、十分に注意してください。
+
+
+## GPX変換トリガー方法
+
+### 自動トリガー（Cron）
+
+Scheduler Workerは毎時0分に自動的に実行されます。手動設定は不要です。
+
+```bash
+# Schedulerのステータスを確認
+curl https://gpx-converter-scheduler.<account>.workers.dev/test
+```
+
+### 手動トリガー
+
+プロジェクト提供のスクリプトを使用すると簡単です：
+
+```bash
+cd cloud/workers/gpx-converter-scheduler
+
+# スクリプトを使用してトリガー（推奨）
+bash tools/manual_trigger.sh
+
+# ヘルスチェックのみ
+bash tools/manual_trigger.sh --health
+
+# 詳細出力
+bash tools/manual_trigger.sh --verbose
+
+# 使用方法を表示
+bash tools/manual_trigger.sh --help
+```
+
+スクリプトは以下の場所からURLを自動的に読み込みます：
+
+1. `tools/.worker-url`（デプロイ時に自動生成）
+2. `.dev.vars`の`SCHEDULER_WORKER_URL`
+3. 引数で直接指定
+
+## 開発
+
+### コードフォーマット（C++）
+
+```bash
+# リポジトリルートから - フォーマットチェック（読み取り専用、CI用）
+docker build -t clang-format-check ./tools
+docker run --rm -e DRY_RUN=true -v "$(pwd):/workspace" clang-format-check
+
+# ファイルをフォーマット（その場で修正）
+docker run --rm -v "$(pwd):/workspace" clang-format-check
+```
+
+フォーマットは、[`.clang-format`](.clang-format)を使用（Googleベースのスタイル、2スペースインデント、100文字行制限）。
+
+### デバッグ
+
+#### M5Stackのシリアルモニタ
+
+```bash
+cd m5GnssLogger
+pio device monitor
+```
+
+#### Workersのログ確認
+
+```bash
+cd cloud/workers/gpx-converter-scheduler
+npx wrangler tail
+```
+
+```bash
+cd cloud/pages-functions/gpx-converter
+npx wrangler pages deployment tail --project-name=gpx-converter
+```

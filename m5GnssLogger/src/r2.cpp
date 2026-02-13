@@ -98,7 +98,9 @@ bool R2Module::uploadFile(const char* localFilePath, const char* remoteKey) {
   return result;
 }
 
-bool R2Module::uploadFileStream(const char* localFilePath, const char* remoteKey, int8_t timezoneOffset) {
+bool R2Module::uploadFileStream(const char* localFilePath,
+                                const char* remoteKey,
+                                int8_t timezoneOffset) {
   displayModule.logMessage("Preparing upload...");
   debug_print("R2", " Opening file: %s", localFilePath);
 
@@ -125,7 +127,10 @@ bool R2Module::uploadFileStream(const char* localFilePath, const char* remoteKey
   return result;
 }
 
-bool R2Module::_uploadStreamData(Stream& stream, size_t dataSize, const char* remoteKey, int8_t timezoneOffset) {
+bool R2Module::_uploadStreamData(Stream& stream,
+                                 size_t dataSize,
+                                 const char* remoteKey,
+                                 int8_t timezoneOffset) {
   WiFiClientSecure client;
   client.setInsecure();
 
@@ -164,8 +169,14 @@ bool R2Module::_uploadStreamData(Stream& stream, size_t dataSize, const char* re
   debug_print("R2", " Timezone offset: %s hours", timezoneHeader);
 
   // Generate authorization header with UNSIGNED-PAYLOAD
-  String authHeader = _generateSignature(
-      "PUT", remoteKey, host.c_str(), _region, "s3", timestamp, payloadHash.c_str(), timezoneHeader);
+  String authHeader = _generateSignature("PUT",
+                                         remoteKey,
+                                         host.c_str(),
+                                         _region,
+                                         "s3",
+                                         timestamp,
+                                         payloadHash.c_str(),
+                                         timezoneHeader);
 
   // Set headers
   http.addHeader("Host", host);
@@ -198,7 +209,10 @@ bool R2Module::_uploadStreamData(Stream& stream, size_t dataSize, const char* re
   return success;
 }
 
-bool R2Module::uploadData(const char* data, size_t dataSize, const char* remoteKey, int8_t timezoneOffset) {
+bool R2Module::uploadData(const char* data,
+                          size_t dataSize,
+                          const char* remoteKey,
+                          int8_t timezoneOffset) {
   displayModule.logMessage("Uploading to R2...");
 
   WiFiClientSecure client;
@@ -239,8 +253,14 @@ bool R2Module::uploadData(const char* data, size_t dataSize, const char* remoteK
   debug_print("R2", " Timezone offset: %s hours", timezoneHeader);
 
   // Generate authorization header
-  String authHeader = _generateSignature(
-      "PUT", remoteKey, host.c_str(), _region, "s3", timestamp, payloadHash.c_str(), timezoneHeader);
+  String authHeader = _generateSignature("PUT",
+                                         remoteKey,
+                                         host.c_str(),
+                                         _region,
+                                         "s3",
+                                         timestamp,
+                                         payloadHash.c_str(),
+                                         timezoneHeader);
 
   // Set headers
   http.addHeader("Host", host);

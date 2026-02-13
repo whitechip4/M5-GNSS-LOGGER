@@ -7,3 +7,9 @@ pages_build_output_dir = "public"
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "${R2_BUCKET_NAME}"
+
+# Environment variables
+[vars]
+# GPX変換で処理する対象日数（デフォルト: 3日）
+# 0または未設定の場合は全データを処理
+CONVERSION_DAYS = "3"

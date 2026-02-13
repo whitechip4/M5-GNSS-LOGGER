@@ -3,6 +3,7 @@
 
 export interface Env {
   BUCKET: R2Bucket;
+  CONVERSION_DAYS?: string;
 }
 
 export interface GNSSPoint {
@@ -327,4 +328,77 @@ export function generateGPXPath(csvPath: string): string {
   }
 
   return `gnss-data/${dateStr}/gpx/${fileNameWithoutExt}.gpx`;
+}
+
+// Date filtering constants and functions for CONVERSION_DAYS feature
+
+// JSTタイムゾーン定数
+const JST_OFFSET_HOURS = 9;
+
+/**
+ * 現在の日時をJST（UTC+9）で取得
+ */
+function getCurrentDateInJST(): Date {
+  const now = new Date();
+  // UTCにJSTオフセットを加算（ミリ秒単位）
+  const jstTime = new Date(now.getTime() + (JST_OFFSET_HOURS * 60 * 60 * 1000));
+  return jstTime;
+}
+
+/**
+ * 直近N日分の日付文字列リストを生成（JST基準、YYYYMMDD形式）
+ * @param days 日数（0以下の場合は空配列）
+ * @returns 日付文字列の配列（新しい順）
+ *
+ * 例: days=3, 現在日時=2024-01-15 23:00:00 JST
+ * 返却値: ["20240115", "20240114", "20240113"]
+ */
+export function generateDateRange(days: number): string[] {
+  const dates: string[] = [];
+
+  if (days <= 0) {
+    return dates; // 空配列 = 全データ処理
+  }
+
+  const jstNow = getCurrentDateInJST();
+
+  for (let i = 0; i < days; i++) {
+    // i日前の日付を計算
+    const date = new Date(jstNow);
+    date.setDate(date.getDate() - i);
+
+    // UTC日付としてYYYYMMDD形式にフォーマット
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+
+    dates.push(`${year}${month}${day}`);
+  }
+
+  return dates;
+}
+
+/**
+ * CONVERSION_DAYS環境変数をパース
+ * @param envValue 環境変数の値
+ * @returns 日数（0=全データ、正数=特定日数）
+ */
+export function parseConversionDays(envValue: string | undefined): number {
+  if (!envValue) {
+    return 0; // 未設定時は全データ処理
+  }
+
+  const parsed = parseInt(envValue, 10);
+
+  if (isNaN(parsed)) {
+    console.warn(`Invalid CONVERSION_DAYS value: "${envValue}", defaulting to 0 (all data)`);
+    return 0;
+  }
+
+  if (parsed < 0) {
+    console.warn(`Negative CONVERSION_DAYS value: "${envValue}", defaulting to 0 (all data)`);
+    return 0;
+  }
+
+  return parsed;
 }

@@ -11,6 +11,10 @@ CLOUDFLARE_API_TOKEN=your_api_token_here
 # R2 Bucket Name
 R2_BUCKET_NAME=your_bucket_name_here
 
+# GPX変換で処理する対象日数（デフォルト: 3日）
+# 0または未設定の場合は全データを処理
+CONVERSION_DAYS=3
+
 # Optional: Cron secret for scheduled triggers
 CRON_SECRET=your_secret_here
 

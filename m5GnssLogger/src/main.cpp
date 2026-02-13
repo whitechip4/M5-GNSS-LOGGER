@@ -43,6 +43,11 @@ void setup() {
   displayModule.clear();
   displayModule.logMessage("Initializing...");
 
+  // タイムゾーン表示
+  char timezoneStr[BUFFER_TIME_STR];
+  sprintf(timezoneStr, "Timezone: UTC%+d", AppConfig::getTimezoneOffset());
+  displayModule.logMessage(timezoneStr);
+
   // GNSSモジュール初期化
   if (!gnssModule.begin()) {
     displayModule.logMessage("Error: u-blox GNSS module not detected");

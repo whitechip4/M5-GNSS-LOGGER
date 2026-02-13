@@ -3,6 +3,14 @@
 #include <string.h>
 
 // ============================================================================
+// Timezone Configuration
+// ============================================================================
+// タイムゾーンオフセット（時間単位）
+// デフォルト: JST（UTC+9）
+// 将来的にWebUIから変更してSPIFFS/フラッシュに保存
+int8_t timezoneOffsetHours = 9;
+
+// ============================================================================
 // Application Configuration Namespace
 // ============================================================================
 
@@ -35,6 +43,10 @@ bool isWifiConfigured() {
 
 bool isR2Configured() {
   return strlen(_r2Config.accountId) > 0 && strlen(_r2Config.accessKey) > 0;
+}
+
+int8_t getTimezoneOffset() {
+  return timezoneOffsetHours;
 }
 
 // ============================================================================

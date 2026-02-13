@@ -98,7 +98,7 @@ bool R2Module::uploadFile(const char* localFilePath, const char* remoteKey) {
   return result;
 }
 
-bool R2Module::uploadFileStream(const char* localFilePath, const char* remoteKey) {
+bool R2Module::uploadFileStream(const char* localFilePath, const char* remoteKey, int8_t timezoneOffset) {
   displayModule.logMessage("Preparing upload...");
   debug_print("R2", " Opening file: %s", localFilePath);
 
@@ -119,13 +119,13 @@ bool R2Module::uploadFileStream(const char* localFilePath, const char* remoteKey
   }
 
   displayModule.logMessage("Uploading to R2...");
-  bool result = _uploadStreamData(file, fileSize, remoteKey);
+  bool result = _uploadStreamData(file, fileSize, remoteKey, timezoneOffset);
 
   file.close();
   return result;
 }
 
-bool R2Module::_uploadStreamData(Stream& stream, size_t dataSize, const char* remoteKey) {
+bool R2Module::_uploadStreamData(Stream& stream, size_t dataSize, const char* remoteKey, int8_t timezoneOffset) {
   WiFiClientSecure client;
   client.setInsecure();
 
@@ -158,15 +158,21 @@ bool R2Module::_uploadStreamData(Stream& stream, size_t dataSize, const char* re
   strftime(dateStamp, sizeof(dateStamp), "%Y%m%d", &timeinfo);
   debug_print("R2", " Timestamp: %s", timestamp);
 
+  // Build timezone metadata header value
+  char timezoneHeader[32];
+  snprintf(timezoneHeader, sizeof(timezoneHeader), "%d", timezoneOffset);
+  debug_print("R2", " Timezone offset: %s hours", timezoneHeader);
+
   // Generate authorization header with UNSIGNED-PAYLOAD
   String authHeader = _generateSignature(
-      "PUT", remoteKey, host.c_str(), _region, "s3", timestamp, payloadHash.c_str());
+      "PUT", remoteKey, host.c_str(), _region, "s3", timestamp, payloadHash.c_str(), timezoneHeader);
 
   // Set headers
   http.addHeader("Host", host);
   http.addHeader("Content-Type", "text/csv");
   http.addHeader("x-amz-content-sha256", payloadHash);
   http.addHeader("x-amz-date", timestamp);
+  http.addHeader("x-amz-meta-timezone", timezoneHeader);
   http.addHeader("Authorization", authHeader);
 
   // Send PUT request with streaming - HTTPClient will read in chunks
@@ -192,7 +198,7 @@ bool R2Module::_uploadStreamData(Stream& stream, size_t dataSize, const char* re
   return success;
 }
 
-bool R2Module::uploadData(const char* data, size_t dataSize, const char* remoteKey) {
+bool R2Module::uploadData(const char* data, size_t dataSize, const char* remoteKey, int8_t timezoneOffset) {
   displayModule.logMessage("Uploading to R2...");
 
   WiFiClientSecure client;
@@ -227,15 +233,21 @@ bool R2Module::uploadData(const char* data, size_t dataSize, const char* remoteK
   strftime(dateStamp, sizeof(dateStamp), "%Y%m%d", &timeinfo);
   debug_print("R2", " Timestamp: %s", timestamp);
 
+  // Build timezone metadata header value
+  char timezoneHeader[32];
+  snprintf(timezoneHeader, sizeof(timezoneHeader), "%d", timezoneOffset);
+  debug_print("R2", " Timezone offset: %s hours", timezoneHeader);
+
   // Generate authorization header
   String authHeader = _generateSignature(
-      "PUT", remoteKey, host.c_str(), _region, "s3", timestamp, payloadHash.c_str());
+      "PUT", remoteKey, host.c_str(), _region, "s3", timestamp, payloadHash.c_str(), timezoneHeader);
 
   // Set headers
   http.addHeader("Host", host);
   http.addHeader("Content-Type", "text/csv");
   http.addHeader("x-amz-content-sha256", payloadHash);
   http.addHeader("x-amz-date", timestamp);
+  http.addHeader("x-amz-meta-timezone", timezoneHeader);
   http.addHeader("Authorization", authHeader);
 
   // Send PUT request
@@ -268,7 +280,8 @@ String R2Module::_generateSignature(const char* method,
                                     const char* region,
                                     const char* service,
                                     const char* timestamp,
-                                    const char* payloadHash) {
+                                    const char* payloadHash,
+                                    const char* timezoneHeader) {
   // Create canonical request
   String canonicalUri = "/" + String(_bucketName) + "/" + String(key);
   debug_print("R2", " Canonical URI: %s", canonicalUri.c_str());
@@ -278,6 +291,13 @@ String R2Module::_generateSignature(const char* method,
                             "x-amz-content-sha256:" + String(payloadHash) + "\n" +
                             "x-amz-date:" + String(timestamp) + "\n";
   String signedHeaders = "host;x-amz-content-sha256;x-amz-date";
+
+  // Add timezone metadata header if provided
+  if (timezoneHeader != nullptr && strlen(timezoneHeader) > 0) {
+    canonicalHeaders += "x-amz-meta-timezone:" + String(timezoneHeader) + "\n";
+    signedHeaders += ";x-amz-meta-timezone";
+  }
+
   debug_print("R2", " Canonical Headers: %s", canonicalHeaders.c_str());
 
   String canonicalRequest = String(method) + "\n" + canonicalUri + "\n" + canonicalQueryString +

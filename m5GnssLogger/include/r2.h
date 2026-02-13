@@ -46,18 +46,20 @@ public:
    * @brief ファイルをR2にストリーミングアップロード（メモリ効率）
    * @param localFilePath SDカード上のローカルファイルパス
    * @param remoteKey R2上のキー（パス）
+   * @param timezoneOffset タイムゾーンオフセット（時間単位、例: JST=+9）
    * @return アップロード成功時true
    */
-  bool uploadFileStream(const char* localFilePath, const char* remoteKey);
+  bool uploadFileStream(const char* localFilePath, const char* remoteKey, int8_t timezoneOffset = 9);
 
   /**
    * @brief ファイルをR2にアップロード（文字列データ）
    * @param data アップロードするデータ
    * @param dataSize データサイズ
    * @param remoteKey R2上のキー（パス）
+   * @param timezoneOffset タイムゾーンオフセット（時間単位、例: JST=+9）
    * @return アップロード成功時true
    */
-  bool uploadData(const char* data, size_t dataSize, const char* remoteKey);
+  bool uploadData(const char* data, size_t dataSize, const char* remoteKey, int8_t timezoneOffset = 9);
 
 #ifdef TESTING
   // Make private methods accessible for testing
@@ -75,7 +77,8 @@ public:
                             const char* region,
                             const char* service,
                             const char* timestamp,
-                            const char* payloadHash);
+                            const char* payloadHash,
+                            const char* timezoneHeader = nullptr);
 
 private:
 #endif
@@ -98,9 +101,10 @@ private:
    * @param stream データストリーム（Fileなど）
    * @param dataSize データサイズ
    * @param remoteKey R2上のキー（パス）
+   * @param timezoneOffset タイムゾーンオフセット（時間単位）
    * @return アップロード成功時true
    */
-  bool _uploadStreamData(Stream& stream, size_t dataSize, const char* remoteKey);
+  bool _uploadStreamData(Stream& stream, size_t dataSize, const char* remoteKey, int8_t timezoneOffset = 9);
 
 #ifndef TESTING
   /**
@@ -120,7 +124,8 @@ private:
                             const char* region,
                             const char* service,
                             const char* timestamp,
-                            const char* payloadHash);
+                            const char* payloadHash,
+                            const char* timezoneHeader = nullptr);
 
   /**
    * @brief SHA256ハッシュを計算

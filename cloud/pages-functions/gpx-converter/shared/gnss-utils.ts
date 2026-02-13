@@ -58,6 +58,11 @@ export async function processCSVFile(key: string, env: Env): Promise<boolean> {
     // Read CSV content
     const csvText = await object.text();
 
+    // Get timezone offset from metadata (default: +9 for JST)
+    const timezoneMeta = object.customMetadata?.timezone;
+    const timezoneOffset = timezoneMeta ? parseInt(timezoneMeta, 10) : 9;
+    console.log(`Timezone offset from metadata: ${timezoneOffset} (metadata: ${timezoneMeta || 'not found, using default'})`);
+
     // Parse CSV
     const points = parseCSV(csvText);
 
@@ -66,7 +71,7 @@ export async function processCSVFile(key: string, env: Env): Promise<boolean> {
     }
 
     // Convert and upload GPX (may split into multiple files if too large)
-    await convertCSVToGPXAndUpload(points, gpxPath, env.BUCKET, key);
+    await convertCSVToGPXAndUpload(points, gpxPath, env.BUCKET, key, timezoneOffset);
     return true;
 
   } catch (error) {
@@ -83,14 +88,15 @@ export async function convertCSVToGPXAndUpload(
   points: GNSSPoint[],
   basePath: string,
   bucket: R2Bucket,
-  sourceFileName: string
+  sourceFileName: string,
+  timezoneOffset: number
 ): Promise<void> {
   let fileNumber = 0;
   let currentStartIndex = 0;
 
   while (currentStartIndex < points.length) {
     const outputPath = fileNumber === 0 ? basePath : getSplitFilePath(basePath, fileNumber);
-    const gpxContent = generateGPX(points, currentStartIndex, sourceFileName, fileNumber);
+    const gpxContent = generateGPX(points, currentStartIndex, sourceFileName, fileNumber, timezoneOffset);
 
     // Check file size and split if needed
     const fileSize = new Blob([gpxContent]).size;
@@ -152,7 +158,8 @@ export function generateGPX(
   points: GNSSPoint[],
   startIndex: number,
   sourceFileName: string,
-  fileNumber: number
+  fileNumber: number,
+  timezoneOffset: number
 ): string {
   if (points.length === 0) {
     throw new Error('No points to convert');
@@ -175,13 +182,13 @@ export function generateGPX(
   }
 
   // Format start time for metadata
-  const startTime = formatDateTimeForGPX(firstPoint.date, firstPoint.time);
+  const startTime = formatDateTimeForGPX(firstPoint.date, firstPoint.time, timezoneOffset);
 
   // Generate track points
   const trackPoints = points.map(p =>
     `      <trkpt lat="${p.lat.toFixed(7)}" lon="${p.lng.toFixed(7)}">
         <ele>${p.alt.toFixed(1)}</ele>
-        <time>${formatDateTimeForGPX(p.date, p.time)}</time>
+        <time>${formatDateTimeForGPX(p.date, p.time, timezoneOffset)}</time>
       </trkpt>`
   ).join('\n');
 
@@ -204,12 +211,24 @@ ${trackPoints}
 }
 
 /**
- * Format date and time for GPX (ISO 8601 with Z suffix)
+ * Format date and time for GPX (ISO 8601 with Z suffix in UTC)
+ * @param date Local date string (YYYY/MM/DD)
+ * @param time Local time string (HH:MM:SS)
+ * @param timezoneOffset Timezone offset in hours (e.g., +9 for JST)
+ * @returns UTC datetime string in ISO 8601 format with Z suffix
  */
-function formatDateTimeForGPX(date: string, time: string): string {
+function formatDateTimeForGPX(date: string, time: string, timezoneOffset: number): string {
   // Convert YYYY/MM/DD to YYYY-MM-DD
   const isoDate = date.replace(/\//g, '-');
-  return `${isoDate}T${time}Z`;
+  const localDateTimeStr = `${isoDate}T${time}`;
+
+  // Parse local time and convert to UTC
+  const localDate = new Date(localDateTimeStr);
+  const utcTime = localDate.getTime() - (timezoneOffset * 3600000);
+  const utcDate = new Date(utcTime);
+
+  // Format to ISO 8601 with Z suffix
+  return utcDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
 /**

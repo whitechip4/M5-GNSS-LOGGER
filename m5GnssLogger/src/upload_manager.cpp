@@ -1,4 +1,5 @@
 #include "upload_manager.h"
+#include "config.h"
 #include <time.h>
 #include "util.h"
 
@@ -132,7 +133,7 @@ void UploadManager::_setGPSTime(const GNSS_DATA& gnssData) {
   gpsTime.tm_year = gnssData.year - 1900;
   gpsTime.tm_mon = gnssData.month - 1;
   gpsTime.tm_mday = gnssData.day;
-  gpsTime.tm_hour = gnssData.hour - UTC_TIME_OFFSET_HOURS;  // ローカル→UTC
+  gpsTime.tm_hour = gnssData.hour - AppConfig::getTimezoneOffset();  // ローカル→UTC
   gpsTime.tm_min = gnssData.minute;
   gpsTime.tm_sec = gnssData.second;
   // システムタイムゾーンはUTC(0)なのでmktimeでOK
@@ -182,7 +183,7 @@ bool UploadManager::_uploadToR2() {
     _display.logMessage(uploadMsg);
 
     // アップロード試行（ストリーミング版を使用）
-    if (_r2.uploadFileStream(filename, remoteKey)) {
+    if (_r2.uploadFileStream(filename, remoteKey, AppConfig::getTimezoneOffset())) {
       // 成功したらキューから削除
       _storage.removeFileFromUploadList(filename);
       uploadedCount++;

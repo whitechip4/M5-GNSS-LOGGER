@@ -1,4 +1,5 @@
 #include "gnss.h"
+#include "config.h"
 #include <time.h>
 
 GnssModule::GnssModule(HardwareSerial& serial)
@@ -44,7 +45,7 @@ void GnssModule::getData(GNSS_DATA& data) {
   data.timeValid = _gnss.getTimeValid(0);
 
   time_t unixTimeUTCByGnss = (time_t)_gnss.getUnixEpoch(0);
-  _setJstTimeFromUTCUnixTime(unixTimeUTCByGnss, data);
+  _setLocalTimeFromUTCUnixTime(unixTimeUTCByGnss, data);
   data.millisecond = _gnss.getMillisecond(0);
 
   data.fixType = _gnss.getFixType(0);
@@ -85,8 +86,8 @@ bool GnssModule::isValid(const GNSS_DATA& data) {
   return true;
 }
 
-void GnssModule::_setJstTimeFromUTCUnixTime(time_t utcTime, GNSS_DATA& data) {
-  utcTime += UTC_TIME_OFFSET_HOURS * 3600;
+void GnssModule::_setLocalTimeFromUTCUnixTime(time_t utcTime, GNSS_DATA& data) {
+  utcTime += AppConfig::getTimezoneOffset() * 3600;
 
   struct tm* localTime = gmtime(&utcTime);
   data.year = localTime->tm_year + 1900;

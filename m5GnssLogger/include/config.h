@@ -50,11 +50,12 @@ typedef struct {
 #define BATTERY_VOLTAGE_THRESHOLD 3.6f
 
 /**
- * @brief UTC時差設定（時間単位）
+ * @brief タイムゾーンオフセット（時間単位）
  * 日本標準時: +9
  * 台湾時間: +8
+ * 変数として動的に管理（将来的にWebUIから変更可能）
  */
-#define UTC_TIME_OFFSET_HOURS 9
+extern int8_t timezoneOffsetHours;
 
 /**
  * @brief NTPサーバー設定
@@ -180,6 +181,12 @@ bool isWifiConfigured();
  * @return 設定されている場合true
  */
 bool isR2Configured();
+
+/**
+ * @brief タイムゾーンオフセットを取得（時間単位）
+ * @return タイムゾーンオフセット（例: JST=+9, UTC+0）
+ */
+int8_t getTimezoneOffset();
 
 // 内部実装用（config.cppで定義）
 extern WIFI_CONFIG _wifiConfig;

@@ -94,7 +94,7 @@ void setup() {
 
   // アップロードキューにファイルを追加
   storageModule.addFileToUploadList(fileName);
-  storageModule.addFileToUploadList(fileRawDataName);
+  // Raw CSVファイルはR2にアップロードしない（SDカードには保存継続）
 
   // GNSSデータ安定待機
   displayModule.logMessage("Waiting gnss data be stable...");

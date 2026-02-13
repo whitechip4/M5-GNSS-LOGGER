@@ -1,9 +1,5 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
-import { processCSVFile } from '../shared/gnss-utils';
-
-interface Env {
-  BUCKET: R2Bucket;
-}
+import { processCSVFile, type Env } from '../shared/gnss-utils';
 
 export const onRequest: PagesFunction<Env> = async (context) => {
   const { env, request } = context;

@@ -35,7 +35,6 @@ cp wrangler.toml wrangler.toml.bak
 # Substitute environment variables in wrangler.toml
 sed -i "s|\${R2_BUCKET_NAME}|${R2_BUCKET_NAME}|g" wrangler.toml
 sed -i "s|\${CRON_SECRET}|${CRON_SECRET}|g" wrangler.toml
-sed -i "s|\${PAGES_FUNCTION_URL}|${PAGES_FUNCTION_URL}|g" wrangler.toml
 
 # Export API token for wrangler
 export CLOUDFLARE_API_TOKEN

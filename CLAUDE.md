@@ -1,121 +1,176 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## Project Overview
-
-M5-GNSS-LOGGER is a GNSS (GPS) logging system with two main components:
-1. **M5Stack Core2 Firmware** ([m5GnssLogger/](m5GnssLogger/)) - Captures GPS data and uploads to Cloudflare R2
-2. **Cloudflare Worker** ([cloud/workers/gpx-converter/](cloud/workers/gpx-converter/)) - Converts CSV data to GPX format automatically
-
-**Data Flow**: M5Stack captures GNSS data → saves to SD card → uploads to R2 when target WiFi detected → Worker triggers automatically → converts CSV to GPX
+このファイルは、このリポジトリでコードを操作する際にClaude Code（claude.ai/code）へのガイダンスを提供します。
 
 ## Claude Code使用時の重要な指示
+
 - **回答言語**: 必ず日本語で回答すること
 - **出力スタイル**: Explanatory（説明的）モードを使用
   - 実行する操作の理由を明確に説明
   - コードの変更内容を詳細に解説
   - 各ステップの目的と結果を記述
-  
-### M5Stack Firmware (PlatformIO)
+
+## プロジェクト概要
+
+* M5スタックでGNSSデータをCSVで記録し、CloudflareのR2に記録したCSVデータをPutでアップロードする。
+* アップロードされたR2のCSVデータをPages FunctionsでGPXに変換する
+* Pages Functionsの変換は、Scheduler WorkerによってCronで定期的にトリガ、またはHttpアクセスによってトリガされる。
+
+M5-GNSS-LOGGERは、3つの主要コンポーネントからなるGNSS（GPS）ロギングシステムです：
+1. **M5Stack Core2ファームウェア** ([m5GnssLogger/](m5GnssLogger/)) - GPSデータを取得しCloudflare R2にアップロード
+2. **Cloudflare Pages Functions** ([cloud/pages-functions/gpx-converter/](cloud/pages-functions/gpx-converter/)) - R2にあるCSVをGPX形式に変換しR2に出力する
+3. **Cloudflare Scheduler Worker** ([cloud/workers/gpx-converter-scheduler/](cloud/workers/gpx-converter-scheduler/)) - 2.のPages Functionsを定期的または手動でトリガする
+
+**データフロー**: M5StackがGNSSデータを取得 → SDカードに保存 → 対象WiFi検出時にR2にアップロード → Workerが自動的にトリガー → FunctionsがCSVをGPXに変換
+
+### M5Stackファームウェア (PlatformIO)
 
 ```bash
 cd m5GnssLogger
 
-# Install dependencies
+# 依存関係をインストール
 pio pkg install
 
-# Build 
+# ビルド
 pio run --environment m5stack-core2
 
-# Upload
-pio run --target upload --environment m5stack-core2 
+# アップロード
+pio run --target upload --environment m5stack-core2
 
-# Monitor serial output (for debugging)
+# シリアル出力をモニター（デバッグ用）
 pio device monitor
 ```
 
-### Cloudflare Worker
+### Cloudflare Scheduler Worker
 
 ```bash
-cd cloud/workers/gpx-converter
+cd cloud/workers/gpx-converter-scheduler
 
-# Install dependencies
+# 依存関係をインストール
 npm install
 
-# Local development server
-npm run dev
+# Cloudflareにデプロイ
+bash deploy.sh
 
-# Deploy to Cloudflare
-npm run deploy
-
-# View production logs
-npm run tail
 ```
 
-### Code Formatting (C++)
+### Cloudflare Pages Functions
 
 ```bash
-# From repository root - check formatting (read-only, for CI)
+cd cloud/pages-functions/gpx-converter
+
+# Cloudflareにデプロイ
+bash deploy.sh
+
+```
+
+### コードフォーマット（C++）
+
+```bash
+# リポジトリルートから - フォーマットチェック（読み取り専用、CI用）
 docker build -t clang-format-check ./tools
 docker run --rm -e DRY_RUN=true -v "$(pwd):/workspace" clang-format-check
 
-# Format files (modify in place)
+# ファイルをフォーマット（その場で修正）
 docker run --rm -v "$(pwd):/workspace" clang-format-check
 ```
 
-Formatting is enforced by GitHub Actions on push/PR to main/master. Uses project-root [`.clang-format`](.clang-format) (Google-based style, 2-space indent, 100 char line limit).
+フォーマットは、main/masterブランチへのpush/PR時にGitHub Actionsで強制適用されます。プロジェクトルートの[`.clang-format`](.clang-format)を使用（Googleベースのスタイル、2スペースインデント、100文字行制限）。
 
-## Architecture
+## アーキテクチャ
 
-### M5Stack Firmware Modules ([m5GnssLogger/src/](m5GnssLogger/src/))
+### M5Stackファームウェアモジュール ([m5GnssLogger/src/](m5GnssLogger/src/))
 
-| Module | Header | Purpose |
-|--------|--------|---------|
-| GNSS | [gnss.h](m5GnssLogger/include/gnss.h) | GPS data capture via u-blox library |
-| Display | [display.h](m5GnssLogger/include/display.h) | Screen rendering (multiple display modes) |
-| Storage | [storage.h](m5GnssLogger/include/storage.h) | SD card CSV writing |
-| WiFi | (see main.cpp) | WiFi connection for upload |
-| R2 | [r2.h](m5GnssLogger/include/r2.h) | Cloudflare R2 upload via AWS Signature V4 |
+| モジュール | ヘッダー | ソース | 目的 |
+|--------|--------|---------|---------|
+| GNSS | [gnss.h](m5GnssLogger/include/gnss.h) | [gnss.cpp](m5GnssLogger/src/gnss.cpp) | GPSデータ取得（u-bloxライブラリ）、データフィルタリング |
+| Display | [display.h](m5GnssLogger/include/display.h) | [display.cpp](m5GnssLogger/src/display.cpp) | 画面描画（LovyanGFX）、ダブルバッファリング |
+| Storage | [storage.h](m5GnssLogger/include/storage.h) | [storage.cpp](m5GnssLogger/src/storage.cpp) | SDカードへのCSV書き込み、ファイル名生成 |
+| WiFi | [my_wifi.h](m5GnssLogger/include/my_wifi.h) | [my_wifi.cpp](m5GnssLogger/src/my_wifi.cpp) | WiFi接続管理、SSID検出 |
+| R2 | [r2.h](m5GnssLogger/include/r2.h) | [r2.cpp](m5GnssLogger/src/r2.cpp) | Cloudflare R2アップロード（AWS Signature V4） |
+| Upload Manager | [upload_manager.h](m5GnssLogger/include/upload_manager.h) | [upload_manager.cpp](m5GnssLogger/src/upload_manager.cpp) | WiFi接続とR2アップロードの統合管理 |
 
-**Key Types**: [`GNSS_DATA`](m5GnssLogger/include/config.h:10) struct contains all GNSS readings (lat/lng/alt/speed/time/fix quality).
+**主要な型**: [`GNSS_DATA`](m5GnssLogger/include/config.h:10)構造体は、全てのGNSS読み取り値（緯度/経度/高度/速度/時刻/fix品質）を含みます。
 
-**Environment**: Configuration loaded from `.env` file (gitignored). Template at [`.env.example`](m5GnssLogger/.env.example).
+**環境設定**: `.env`ファイルから設定を読み込みます（gitignore対象）。テンプレートは[`.env.example`](m5GnssLogger/.env.example)を参照。
 
-**Thresholds** ([config.h](m5GnssLogger/include/config.h:42)): GNSS data is filtered by HDOP (< 6.0), min satellites (≥ 5), position change (> 0.001°).
+**しきい値** ([config.h](m5GnssLogger/include/config.h:42)): GNSSデータはHDOP（< 6.0）、最小衛星数（≥ 5）、位置変化（> 0.001°）でフィルタリングされます。
 
-### Cloudflare Worker ([cloud/workers/gpx-converter/src/index.ts](cloud/workers/gpx-converter/src/index.ts))
+### Cloudflare Scheduler Worker ([cloud/workers/gpx-converter-scheduler/src/scheduler.ts](cloud/workers/gpx-converter-scheduler/src/scheduler.ts))
 
-- **Trigger**: R2 bucket notification on object creation
-- **Handler**: `r2Objects()` processes new CSV files
-- **Features**:
-  - Parses CSV format: `date,time,lat,lng,alt,spd,siv,hdop`
-  - Generates GPX 1.1 format with metadata
-  - Splits large files (>4MB) to respect Google My Maps limits
-  - Output path: `gnss-data/YYYYMMDD/gpx/filename.gpx`
+- **トリガー方式**:
+  - Cronトリガー: 毎時0分に自動実行（`"0 * * * *"`）
+  - HTTPトリガー: `POST /trigger` で手動実行可能
+- **機能**: Pages FunctionsのGPX変換エンドポイントを呼び出し
+- **環境変数**: `PAGES_FUNCTION_URL` でPages FunctionsのURLを指定
 
-**Binding**: R2 bucket bound as `BUCKET` in [wrangler.toml](cloud/workers/gpx-converter/wrangler.toml:6).
+### Cloudflare Pages Functions ([cloud/pages-functions/gpx-converter/functions/gpx-converter.ts](cloud/pages-functions/gpx-converter/functions/gpx-converter.ts))
 
-## Security
+- **トリガー**: Scheduler WorkerからのHTTPリクエスト、または直接HTTPアクセス
+- **R2バインディング**: `BUCKET` 経由でR2バケットにアクセス
+- **機能**:
+  - `gnss-data/YYYYMMDD/` ディレクトリをスキャン
+  - CSVファイルをGPX 1.1形式に変換
+  - 4MB超のファイルは自動分割（Google My Maps対応）
+  - 出力先: `gnss-data/YYYYMMDD/gpx/filename.gpx`
+- **共通処理**: [shared/gnss-utils.ts](cloud/pages-functions/gpx-converter/shared/gnss-utils.ts) に変換ロジックを記述
 
-Never commit sensitive files. These are gitignored:
-- `m5GnssLogger/.env` - Contains WiFi credentials, R2 keys
-- `cloud/workers/gpx-converter/.dev.vars` - Contains Cloudflare credentials
+**バインディング**: R2バケットは `BUCKET` として [wrangler.toml](cloud/pages-functions/gpx-converter/wrangler.toml:6) でバインドされます。
 
-Use template files instead:
+## セキュリティ
+
+機密ファイルをコミットしないでください。これらはgitignoreされています：
+- `m5GnssLogger/.env` - WiFi認証情報、R2キーが含まれます
+- `cloud/.config/.dev.vars` - Cloudflare認証情報が含まれます
+
+代わりにテンプレートファイルを使用してください：
 - `m5GnssLogger/.env.example`
-- `cloud/workers/gpx-converter/.dev.vars.example`
+- `cloud/.config/.dev.vars.example`
 
-## File Naming Conventions
+## ファイル命名規則
 
-- **CSV files**: `gnss_csv_data_YYYYMMDD_HHMMSS.csv` (processed data)
-- **CSV raw files**: `gnss_csv_data_YYYYMMDD_HHMMSS_raw.csv` (all GNSS messages)
-- **GPX files**: Same base name with `.gpx` extension in `gpx/` subfolder
+- **CSVファイル**: `gnss_csv_data_YYYYMMDD_HHMMSS.csv` （処理済みデータ）
+- **CSV生ファイル**: `gnss_csv_data_YYYYMMDD_HHMMSS_raw.csv` （全GNSSメッセージ）
+- **GPXファイル**: `gpx/`サブフォルダ内の同じ基本名に`.gpx`拡張子
 
-## Device Button Controls
+## CSVデータフォーマット
 
-| Button | Function |
+### 処理済みデータ（通常CSV）
+品質しきい値を満たしたフィルタリング済みGNSSデータ（HDOP < 6.0、衛星数 ≥ 5、位置変化 > 0.001°）
+```
+date,time,lat,lng,alt,spd,siv,hdop
+2024-01-01,12:00:00,35.6895000,139.6917000,50.0,0.0,12,1.2
+```
+
+### 生データ（Raw CSV）
+フィルタリング前の全GNSSメッセージ
+```
+date,time,lat,lng,alt,spd,siv,hdop,fixType,pdop,...
+```
+
+## デバイスボタン操作
+
+| ボタン | 機能 |
 |--------|----------|
-| Btn A | Toggle display mode (detail/simple) |
-| Btn B | Stop recording (with confirmation dialog) |
-| Btn C | Cancel stop confirmation |
+| ボタンA | 表示モード切替（詳細/簡易） |
+| ボタンB | 記録停止（確認ダイアログあり） |
+| ボタンC | 停止確認のキャンセル |
+
+## GPX変換トリガー方法
+
+### 自動トリガー（Cron）
+Scheduler Workerは毎時0分に自動的に実行され、Pages Functionsを呼び出します。
+
+```bash
+# Schedulerのステータスを確認
+curl https://gpx-converter-scheduler.<account>.workers.dev/test
+```
+
+### 手動トリガー（HTTP）
+```bash
+# Scheduler経由でトリガー
+curl -X POST https://gpx-converter-scheduler.<account>.workers.dev/trigger
+
+# Pages Functionsを直接トリガー
+curl -X POST https://gpx-converter.<account>.pages.dev/gpx-converter
+```

@@ -1,13 +1,17 @@
-# GPX Converter Worker
+# GPX Converter - Scheduler Worker
 
-Cloudflare Worker that automatically converts CSV GNSS data files to GPX format when they are uploaded to R2 storage.
+**Note:** The main GPX conversion logic has been migrated to Pages Functions for better handling of large CSV files (10MB+).
 
-## Features
+This Scheduler Worker triggers the Pages Functions via HTTP every hour.
 
-- Automatically triggers when new CSV files are uploaded to R2
-- Converts CSV GNSS data to standard GPX format
-- Organizes output files by date in `gnss-data/YYYYMMDD/gpx/` directory
-- Preserves all GNSS data: latitude, longitude, altitude, speed, satellites, HDOP
+## Current Deployment
+
+| Component | URL | Purpose |
+|-----------|-----|---------|
+| **Scheduler Worker** | https://gpx-converter-scheduler.<your-account>.workers.dev | Cron trigger → calls Pages Functions |
+| **Pages Functions** | https://gpx-converter.<your-account>.workers.dev/gpx-converter | Main GPX conversion logic |
+
+See [../../README.md](../../README.md) for complete deployment documentation.
 
 ## Setup
 
@@ -26,13 +30,14 @@ npm install
 
 2. Configure environment variables:
 ```bash
-cp .dev.vars.example .dev.vars
+cp ../../.config/.dev.vars.example ../../.config/.dev.vars
 ```
 
-Edit `.dev.vars` with your Cloudflare account ID:
+Edit `../../.config/.dev.vars` with your Cloudflare account ID:
 ```
 CLOUDFLARE_ACCOUNT_ID=your_account_id_here
 R2_BUCKET_NAME=hobby-data
+CLOUDFLARE_API_TOKEN=your_api_token
 ```
 
 3. Login to Cloudflare:
@@ -49,7 +54,12 @@ npm run deploy
 
 ### Local Testing
 
-Test locally (requires R2 bucket to be accessible):
+For local development with `npm run dev`, create a symlink to the shared config:
+```bash
+ln -s ../../.config/.dev.vars .dev.vars
+```
+
+Then test locally (requires R2 bucket to be accessible):
 ```bash
 npm run dev
 ```

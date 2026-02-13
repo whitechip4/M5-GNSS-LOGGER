@@ -1,0 +1,12 @@
+name = "gpx-converter"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "public"
+
+[vars]
+PAGES_FUNCTION_URL = "${PAGES_FUNCTION_URL}"
+
+# R2 Bucket binding (applies to all environments)
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "${R2_BUCKET_NAME}"

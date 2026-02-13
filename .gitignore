@@ -14,6 +14,8 @@ m5GnssLogger/include/.env.h
 # Cloudflare Workers Environment Variables
 cloud/workers/gpx-converter/.dev.vars
 cloud/workers/gpx-converter/.dev.vars.local
+cloud/pages-functions/gpx-converter/.dev.vars
+cloud/.config/.dev.vars
 
 # Dependencies
 node_modules/
@@ -33,3 +35,19 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Local development files (do not commit)
+cloud/workers/gpx-converter/.dev.vars
+cloud/workers/gpx-converter/.dev.vars.local
+cloud/pages-functions/gpx-converter/.dev.vars
+cloud/pages-functions/gpx-converter/.dev.vars.local
+
+# Cloudflare Wrangler build cache
+.wrangler/
+
+# Wrangler deployment backup files
+*.bak
+wrangler.toml.bak
+
+# Cloudflare Worker deployment URLs (auto-generated)
+cloud/workers/gpx-converter-scheduler/tools/.worker-url

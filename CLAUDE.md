@@ -10,8 +10,13 @@ M5-GNSS-LOGGER is a GNSS (GPS) logging system with two main components:
 
 **Data Flow**: M5Stack captures GNSS data → saves to SD card → uploads to R2 when target WiFi detected → Worker triggers automatically → converts CSV to GPX
 
-## Build and Development Commands
-
+## Claude Code使用時の重要な指示
+- **回答言語**: 必ず日本語で回答すること
+- **出力スタイル**: Explanatory（説明的）モードを使用
+  - 実行する操作の理由を明確に説明
+  - コードの変更内容を詳細に解説
+  - 各ステップの目的と結果を記述
+  
 ### M5Stack Firmware (PlatformIO)
 
 ```bash

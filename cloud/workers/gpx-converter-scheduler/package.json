@@ -2,7 +2,6 @@
   "name": "gpx-converter",
   "version": "1.0.0",
   "description": "Convert CSV GNSS data to GPX format",
-  "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",

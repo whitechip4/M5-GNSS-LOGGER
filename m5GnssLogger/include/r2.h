@@ -59,7 +59,10 @@ public:
    * @param remoteKey R2上のキー（パス）
    * @param timezoneOffset タイムゾーンオフセット（時間単位、例: JST=+9）
    * @return アップロード成功時true
+   * @deprecated Use uploadFileStream() instead for better memory efficiency.
+   *             This method loads entire file into memory.
    */
+  [[deprecated("Use uploadFileStream instead for better memory efficiency")]]
   bool
   uploadData(const char* data, size_t dataSize, const char* remoteKey, int8_t timezoneOffset = 9);
 
@@ -156,7 +159,9 @@ private:
    * @param keyLen Length of key
    * @param data Data to HMAC
    * @param dataLen Length of data
-   * @param output Output buffer (must be 32 bytes)
+   * @param output Output buffer (must be at least 32 bytes for SHA-256 output)
+   * @note Output buffer size is not validated at runtime for performance.
+   *       Caller must ensure buffer is >= 32 bytes.
    */
   void _hmacSha256Binary(const char* key,
                          size_t keyLen,

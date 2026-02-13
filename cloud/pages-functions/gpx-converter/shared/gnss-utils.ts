@@ -60,7 +60,13 @@ export async function processCSVFile(key: string, env: Env): Promise<boolean> {
 
     // Get timezone offset from metadata (default: +9 for JST)
     const timezoneMeta = object.customMetadata?.timezone;
-    const timezoneOffset = timezoneMeta ? parseInt(timezoneMeta, 10) : 9;
+    let timezoneOffset = timezoneMeta ? parseInt(timezoneMeta, 10) : 9;
+
+    // Validate timezone offset (NaN check)
+    if (isNaN(timezoneOffset)) {
+      console.warn('Invalid timezone metadata, using default (JST+9):', timezoneMeta);
+      timezoneOffset = 9;
+    }
     console.log(`Timezone offset from metadata: ${timezoneOffset} (metadata: ${timezoneMeta || 'not found, using default'})`);
 
     // Parse CSV
@@ -102,26 +108,30 @@ export async function convertCSVToGPXAndUpload(
     const fileSize = new Blob([gpxContent]).size;
 
     if (fileSize > MAX_GPX_FILE_SIZE) {
-      // Find how many points fit
-      let endOfSegment = currentStartIndex + 1;
-      while (endOfSegment <= points.length) {
-        const testSegment = points.slice(currentStartIndex, endOfSegment);
-        const testGPX = generateGPX(testSegment, 0, sourceFileName, fileNumber);
+      // Binary search to find how many points fit
+      let low = currentStartIndex + 1;
+      let high = points.length;
+
+      while (low < high) {
+        const mid = Math.floor((low + high) / 2);
+        const testSegment = points.slice(currentStartIndex, mid);
+        const testGPX = generateGPX(testSegment, 0, sourceFileName, fileNumber, timezoneOffset);
         const testSize = new Blob([testGPX]).size;
 
         if (testSize > MAX_GPX_FILE_SIZE) {
-          break;
+          high = mid;
+        } else {
+          low = mid + 1;
         }
-        endOfSegment++;
       }
 
-      // Upload the segment that fits
-      const segmentPoints = points.slice(currentStartIndex, endOfSegment - 1);
-      const segmentGPX = generateGPX(segmentPoints, 0, sourceFileName, fileNumber);
+      // Upload the segment that fits (low - 1 is the largest valid index)
+      const segmentPoints = points.slice(currentStartIndex, low - 1);
+      const segmentGPX = generateGPX(segmentPoints, 0, sourceFileName, fileNumber, timezoneOffset);
       await uploadGPXToR2(bucket, outputPath, segmentGPX);
 
       // Move to next segment
-      currentStartIndex = endOfSegment - 1;
+      currentStartIndex = low - 1;
       fileNumber++;
     } else {
       // Upload complete file
@@ -220,15 +230,22 @@ ${trackPoints}
 function formatDateTimeForGPX(date: string, time: string, timezoneOffset: number): string {
   // Convert YYYY/MM/DD to YYYY-MM-DD
   const isoDate = date.replace(/\//g, '-');
-  const localDateTimeStr = `${isoDate}T${time}`;
 
-  // Parse local time and convert to UTC
-  const localDate = new Date(localDateTimeStr);
-  const utcTime = localDate.getTime() - (timezoneOffset * 3600000);
-  const utcDate = new Date(utcTime);
+  // Build timezone offset string in ISO 8601 format (+HH:mm or -HH:mm)
+  const tzOffsetSign = timezoneOffset >= 0 ? '+' : '-';
+  const tzOffsetAbs = Math.abs(timezoneOffset);
+  const tzOffsetHours = Math.floor(tzOffsetAbs);
+  const tzOffsetMinutes = Math.round((tzOffsetAbs - tzOffsetHours) * 60);
+  const tzOffsetStr = `${tzOffsetSign}${String(tzOffsetHours).padStart(2, '0')}:${String(tzOffsetMinutes).padStart(2, '0')}`;
 
-  // Format to ISO 8601 with Z suffix
-  return utcDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
+  // Create ISO 8601 string with explicit timezone offset
+  const localDateTimeWithTz = `${isoDate}T${time}${tzOffsetStr}`;
+
+  // Parse with timezone - Date constructor will handle ISO 8601 with offset correctly
+  const localDate = new Date(localDateTimeWithTz);
+
+  // Format to ISO 8601 with Z suffix (UTC)
+  return localDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
 /**

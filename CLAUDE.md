@@ -21,11 +21,18 @@
 M5-GNSS-LOGGERは、3つの主要コンポーネントからなるGNSS（GPS）ロギングシステムです：
 1. **M5Stack Core2ファームウェア** ([m5GnssLogger/](m5GnssLogger/)) - GPSデータを取得しCloudflare R2にアップロード
 2. **Cloudflare Pages Functions** ([cloud/pages-functions/gpx-converter/](cloud/pages-functions/gpx-converter/)) - R2にあるCSVをGPX形式に変換しR2に出力する
-3. **Cloudflare Scheduler Worker** ([cloud/workers/gpx-converter-scheduler/](cloud/workers/gpx-converter-scheduler/)) - 2.のPages Functionsを定期的または手動でトリガする
+3. **Cloudflare Scheduler Worker** ([cloud/workers/gpx-converte-scheduler/](cloud/workers/gpx-converter-scheduler/)) - 2.のPages Functionsを定期的または手動でトリガする
 
 **データフロー**: M5StackがGNSSデータを取得 → SDカードに保存 → 対象WiFi検出時にR2にアップロード → Workerが自動的にトリガー → FunctionsがCSVをGPXに変換
 
+
+## コーディング規則
+
+* 基本的にGoogle Style Guides に従う事
+
 ### M5Stackファームウェア (PlatformIO)
+
+#### 各種コマンド
 
 ```bash
 cd m5GnssLogger
@@ -81,7 +88,7 @@ docker run --rm -v "$(pwd):/workspace" clang-format-check
 
 ## アーキテクチャ
 
-### M5Stackファームウェアモジュール ([m5GnssLogger/src/](m5GnssLogger/src/))
+### M5Stackファームウェアソースコード ([m5GnssLogger/src/](m5GnssLogger/src/))
 
 | モジュール | ヘッダー | ソース | 目的 |
 |--------|--------|---------|---------|
@@ -94,9 +101,7 @@ docker run --rm -v "$(pwd):/workspace" clang-format-check
 
 **主要な型**: [`GNSS_DATA`](m5GnssLogger/include/config.h:10)構造体は、全てのGNSS読み取り値（緯度/経度/高度/速度/時刻/fix品質）を含みます。
 
-**環境設定**: `.env`ファイルから設定を読み込みます（gitignore対象）。テンプレートは[`.env.example`](m5GnssLogger/.env.example)を参照。
-
-**しきい値** ([config.h](m5GnssLogger/include/config.h:42)): GNSSデータはHDOP（< 6.0）、最小衛星数（≥ 5）、位置変化（> 0.001°）でフィルタリングされます。
+**環境設定**: `include/.env.h`ファイルから設定を読み込みます（gitignore対象）。テンプレートは[`.env.example.h`](m5GnssLogger/include/env.example.h)を参照。
 
 ### Cloudflare Scheduler Worker ([cloud/workers/gpx-converter-scheduler/src/scheduler.ts](cloud/workers/gpx-converter-scheduler/src/scheduler.ts))
 

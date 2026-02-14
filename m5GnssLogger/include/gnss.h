@@ -46,11 +46,11 @@ private:
   uint32_t _recoveryBufferTimeAnchor;
 
   /**
-   * @brief UTC Unix時間からローカル時間を設定
+   * @brief UTC Unix時間からJST時間を設定
    * @param utcTime UTC Unix時間
    * @param data 設定するGNSS_DATA構造体への参照
    */
-  void _setLocalTimeFromUTCUnixTime(time_t utcTime, GNSS_DATA& data);
+  void _setJstTimeFromUTCUnixTime(time_t utcTime, GNSS_DATA& data);
 };
 
 #endif  // GNSS_H

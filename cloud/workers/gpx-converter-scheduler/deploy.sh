@@ -38,6 +38,17 @@ if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
   exit 1
 fi
 
+# Cleanup function to restore wrangler.toml on exit
+cleanup() {
+  if [ -f "wrangler.toml.bak" ]; then
+    mv wrangler.toml.bak wrangler.toml
+    echo "Restored wrangler.toml from backup"
+  fi
+}
+
+# Trap exit signals to ensure cleanup runs
+trap cleanup EXIT INT TERM
+
 # Create backup of wrangler.toml
 cp wrangler.toml wrangler.toml.bak
 
@@ -52,9 +63,6 @@ export CLOUDFLARE_API_TOKEN
 npm install
 DEPLOY_OUTPUT=$(npm run deploy 2>&1 | tr -d '\r')
 echo "$DEPLOY_OUTPUT"
-
-# Restore original wrangler.toml with environment variable placeholders
-mv wrangler.toml.bak wrangler.toml
 
 # After successful deployment, generate worker URL file
 # Extract the worker URL from wrangler output (format: https://worker-name.subdomain.workers.dev)

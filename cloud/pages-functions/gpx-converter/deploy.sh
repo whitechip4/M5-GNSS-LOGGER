@@ -29,6 +29,17 @@ if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
   exit 1
 fi
 
+# Cleanup function to restore wrangler.toml on exit
+cleanup() {
+  if [ -f "wrangler.toml.bak" ]; then
+    mv wrangler.toml.bak wrangler.toml
+    echo "Restored wrangler.toml from backup"
+  fi
+}
+
+# Trap exit signals to ensure cleanup runs
+trap cleanup EXIT INT TERM
+
 # Create backup of wrangler.toml
 cp wrangler.toml wrangler.toml.bak
 
@@ -42,9 +53,6 @@ export CLOUDFLARE_API_TOKEN
 # Deploy
 echo "Deploying to Cloudflare Pages Functions (Production)..."
 npx wrangler pages deploy . --project-name=gpx-converter --branch=production --commit-dirty=true
-
-# Restore original wrangler.toml with environment variable placeholders
-mv wrangler.toml.bak wrangler.toml
 
 echo "Deployment complete!"
 echo "Pages Function URL: https://gpx-converter.<your-account>.workers.dev/gpx-converter"

@@ -7,94 +7,73 @@
 #include "gnss.h"
 #include "display.h"
 #include "storage.h"
+#include "util.h"
+#include "my_wifi.h"
+#include "r2.h"
+#include "upload_manager.h"
 
 // グローバルインスタンス
 GnssModule gnssModule(Serial2);
 DisplayModule displayModule;
 StorageModule storageModule;
+MyWiFiModule wifiModule;
+R2Module r2Module;
 AXP192 axp192;
+UploadManager uploadManager(displayModule, wifiModule, r2Module, storageModule);
 
 // グローバル変数
 GNSS_DATA gnssData;
 float batVoltage = 0;
 bool isGpsOk = false;
 bool isSdCardOk = false;
+bool isRecording = true;
 DISPLAY_MODE viewMode = DISPLAY_MODE_DETAIL;
 
 // ファイル名（setupで初期化）
-char fileName[64] = "";
-char fileRawDataName[128] = "";
-
-// 振動制御変数
-uint32_t vibEndTimeMillis = 0;
-bool vibFlag = false;
-
-// 関数プロトタイプ
-static void vibration(uint32_t ms);
-static void vibrationProcess();
-
-/**
- * @brief 振動を開始
- * @param ms 振動時間（ミリ秒）
- */
-static void vibration(uint32_t ms) {
-  vibEndTimeMillis = millis() + ms;
-  vibFlag = true;
-  M5.Axp.SetLDOEnable(3, true);
-}
-
-/**
- * @brief 振動プロセス（定期的に呼び出す）
- */
-static void vibrationProcess() {
-  if (!vibFlag) {
-    return;
-  }
-
-  if (millis() >= vibEndTimeMillis) {
-    vibFlag = false;
-    M5.Axp.SetLDOEnable(3, false);  // 振動モーターをOFF
-  }
-}
+char fileName[BUFFER_FILENAME_MAX] = "";
+char fileRawDataName[BUFFER_FILENAME_RAW_MAX] = "";
 
 void setup() {
-  M5.begin(true, true, true, true);
+  // M5Core2 initialization: (SDEnable, SerialEnable, LCDEnable, I2CEnable)
+  // Note: LCD is disabled here to avoid conflict with LovyanGFX
+  M5.begin(true, true, false, true);
   displayModule.begin();
   Serial2.begin(38400, SERIAL_8N1, 13, 14);  // NEO_M9N用
 
-  displayModule.showMessage("Initializing...\n");
+  displayModule.clear();
+  displayModule.logMessage("Initializing...");
+
+  // タイムゾーン表示
+  char timezoneStr[BUFFER_TIME_STR];
+  sprintf(timezoneStr, "Timezone: UTC%+d", AppConfig::getTimezoneOffset());
+  displayModule.logMessage(timezoneStr);
 
   // GNSSモジュール初期化
   if (!gnssModule.begin()) {
-    displayModule.showMessage("u-blox GNSS module not detected");
-    delay(5000);
+    displayModule.logMessage("Error: u-blox GNSS module not detected");
+    delay(DELAY_GNSS_INIT_MS);
     ESP.restart();
   }
 
-  displayModule.clear();
-  displayModule.showMessage("Waiting for receive Time Signal...\n");
-
   // 時刻信号受信待機
   uint8_t initialTimeSecond = 0;
+  displayModule.logMessage("Waiting for receive Time Signal...");
   do {
     gnssModule.update();
     gnssModule.getData(gnssData);
 
-    displayModule.showMessage("Waiting for receive Time Signal...\n");
-    displayModule.showMessage("DT: ");
-    char timeStr[64];
+    char timeStr[BUFFER_TIME_STR];
     sprintf(timeStr,
-            "%04d/%02d/%02d_%02d%02d%02d\n",
+            "DT: %04d/%02d/%02d_%02d%02d%02d",
             gnssData.year,
             gnssData.month,
             gnssData.day,
             gnssData.hour,
             gnssData.minute,
             gnssData.second);
-    displayModule.showMessage(timeStr);
+    displayModule.logMessage(timeStr);
 
-    delay(1000);
-    displayModule.clear();
+    delay(DELAY_GENERAL_TIMING_MS);
   } while (
       !(gnssData.timeValid && gnssData.dateValid && (gnssData.second != 0) && (gnssData.day != 0)));
 
@@ -105,8 +84,8 @@ void setup() {
 
   // SDカード初期化
   if (!storageModule.begin()) {
-    displayModule.showMessage("Error : SDCardNotFound");
-    delay(10000);
+    displayModule.logMessage("Error: SDCardNotFound");
+    delay(DELAY_SD_ERROR_DISPLAY_MS);
     ESP.restart();
   }
 
@@ -118,28 +97,102 @@ void setup() {
   storageModule.writeData(gnssData, fileName);
   storageModule.writeRawData(gnssData, fileRawDataName);
 
+  // アップロードキューにファイルを追加
+  storageModule.addFileToUploadList(fileName);
+  // Raw CSVファイルはR2にアップロードしない（SDカードには保存継続）
+
   // GNSSデータ安定待機
+  displayModule.logMessage("Waiting gnss data be stable...");
   do {
-    displayModule.showMessage("Waiting gnss data be stable...\n");
-    char satStr[32];
-    sprintf(satStr, "Satellites: %d (>= 7)\n", gnssData.siv);
-    displayModule.showMessage(satStr);
+    char satStr[BUFFER_SAT_STR];
+    sprintf(satStr, "Satellites: %d (>= 7)", gnssData.siv);
+    displayModule.logMessage(satStr);
 
     gnssModule.update();
     gnssModule.getData(gnssData);
     isGpsOk = gnssModule.isValid(gnssData);
 
-    delay(500);
-    displayModule.clear();
+    delay(DELAY_GNSS_STABILITY_CHECK_MS);
   } while ((!isGpsOk) && (gnssData.siv < 7));
+
+  // 設定を読み込む（.envファイルがない場合は空文字列のまま）
+  AppConfig::loadConfig();
+}
+
+void _stopRecording() {
+  isRecording = false;
+  displayModule.clear();  // Clear confirmation dialog before starting log mode
+  displayModule.logMessage("Recording stopped");
+  debug_print("MAIN", "Recording stopped");
+  delay(DELAY_GENERAL_TIMING_MS);
+
+  // アップロードマネージャーで処理
+  uploadManager.stopAndUpload(gnssData);
+}
+
+void _showStopConfirmationDialog() {
+  // Clear screen and reset log cursor before showing dialog
+  displayModule.resetLogCursor();
+
+  displayModule.logMessage("Stop recording?");
+  displayModule.logMessage("BtnB: Confirm");
+  displayModule.logMessage("BtnC: Cancel");
+  vibration(200);
+
+  unsigned long confirmStart = millis();
+  bool confirmed = false;
+  bool cancelled = false;
+
+  while (millis() - confirmStart < DELAY_CONFIRM_TIMEOUT_MS) {
+    M5.update();
+    vibrationProcess();
+
+    if (M5.BtnB.wasPressed()) {
+      confirmed = true;
+      vibration(200);
+      break;
+    }
+
+    if (M5.BtnC.wasPressed()) {
+      cancelled = true;
+      vibration(200);
+      break;
+    }
+
+    delay(DELAY_BUTTON_POLL_MS);
+  }
+
+  if (confirmed) {
+    stopVibration();
+    _stopRecording();
+  } else {
+    displayModule.resetLogCursor();
+    vibration(200);
+    stopVibration();
+  }
 }
 
 void loop() {
   static uint8_t preSecond = 0;
+  static uint32_t lastDisplayUpdate = 0;
+
+  // Button processing (every loop) - for better response
+  M5.update();
+  vibrationProcess();
+
+  // Button A: change view mode
+  if (M5.BtnA.wasPressed()) {
+    viewMode = (viewMode == DISPLAY_MODE_DETAIL) ? DISPLAY_MODE_SIMPLE : DISPLAY_MODE_DETAIL;
+    vibration(200);
+  }
+
+  // Button B: stop recording (with confirmation)
+  if (M5.BtnB.wasPressed() && isRecording) {
+    _showStopConfirmationDialog();
+  }
 
   // 100msec job
-  if (!(millis() % 100)) {
-    M5.update();
+  if (!(millis() % LOOP_INTERVAL_MS)) {
     gnssModule.update();
     gnssModule.getData(gnssData);
 
@@ -147,31 +200,25 @@ void loop() {
     isGpsOk = gnssModule.isValid(gnssData);
     isSdCardOk = storageModule.isReady();
 
+    // Display update (configurable frequency)
+    if (millis() - lastDisplayUpdate >= DELAY_DISPLAY_UPDATE_MS) {
+      displayModule.update(gnssData, batVoltage, isGpsOk, isSdCardOk, isRecording, viewMode);
+      lastDisplayUpdate = millis();
+    }
+
     // 1sec job
     if (gnssData.second != preSecond) {
       preSecond = gnssData.second;
 
-      // 生データ書き込み（常に）
-      storageModule.writeRawData(gnssData, fileRawDataName);
-
-      // 有効なデータのみ書き込み
-      if (isGpsOk) {
-        storageModule.writeData(gnssData, fileName);
+      // 生データ書き込み（記録中のみ）
+      if (isRecording) {
+        storageModule.writeRawData(gnssData, fileRawDataName);
       }
 
-      // 表示更新
-      displayModule.update(gnssData, batVoltage, isGpsOk, isSdCardOk, viewMode);
-    }
-
-    // button A pressed -> change view mode
-    if (M5.BtnA.wasPressed()) {
-      viewMode = (viewMode == DISPLAY_MODE_DETAIL) ? DISPLAY_MODE_SIMPLE : DISPLAY_MODE_DETAIL;
-      vibration(200);
-    }
-
-    // 1msec job
-    if (!(millis() % 1)) {
-      vibrationProcess();
+      // 有効なデータのみ書き込み（記録中のみ）
+      if (isRecording && isGpsOk) {
+        storageModule.writeData(gnssData, fileName);
+      }
     }
   }
 }

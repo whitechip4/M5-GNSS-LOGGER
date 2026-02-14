@@ -6,7 +6,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 IMAGE_NAME="clang-format-check"
 CONTAINER_NAME="clang-format-check-container"
 
@@ -48,7 +48,7 @@ fi
 # Build the Docker image if it doesn't exist
 if ! docker image inspect "$IMAGE_NAME" &> /dev/null; then
   echo "Building Docker image '$IMAGE_NAME'..."
-  docker build -t "$IMAGE_NAME" ./tools
+  docker build -t "$IMAGE_NAME" ./m5GnssLogger/tools
 else
   echo "Using existing Docker image '$IMAGE_NAME'."
 fi

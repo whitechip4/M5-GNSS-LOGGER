@@ -7,7 +7,7 @@ on:
     branches: [ main, master ]
 
 jobs:
-  format-check:
+  cpp-format-check:
     runs-on: ubuntu-latest
     
     steps:
@@ -29,9 +29,31 @@ jobs:
 
     - name: Build Docker image for formatting
       run: |
-        docker build -t clang-format-check ./tools
+        docker build -t clang-format-check ./m5GnssLogger/tools
 
     - name: Run clang-format check (dry-run)
       run: |
         # Run the formatter in dry-run mode to check if formatting is needed
         docker run --rm -e DRY_RUN=true -v "$(pwd):/workspace" clang-format-check
+
+  typescript-format-check:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install dependencies
+      run: |
+        cd cloud/workers/gpx-converter-scheduler && npm ci
+        cd ../../pages-functions/gpx-converter && npm ci
+
+    - name: Run Biome format check
+      run: |
+        npm install -g -D @biomejs/biome
+        biome check ./cloud

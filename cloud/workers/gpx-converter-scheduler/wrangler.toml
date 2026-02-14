@@ -1,0 +1,10 @@
+name = "gpx-converter-scheduler"
+main = "src/scheduler.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+PAGES_FUNCTION_URL = "${PAGES_FUNCTION_URL}"
+
+# Cron trigger - run every hour
+[triggers]
+crons = ["0 * * * *"]  # Run every hour at minute 0

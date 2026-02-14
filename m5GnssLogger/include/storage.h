@@ -63,6 +63,46 @@ public:
                                const GNSS_DATA& data,
                                bool isRaw = false);
 
+  /**
+   * @brief ファイル名をアップロードキューに追加
+   * @param filename 追加するファイル名（先頭スラッシュ付き）
+   * @return 成功時true
+   */
+  bool addFileToUploadList(const char* filename);
+
+  /**
+   * @brief アップロードキューからファイル名を削除
+   * @param filename 削除するファイル名（先頭スラッシュ付き）
+   * @return 成功時true
+   */
+  bool removeFileFromUploadList(const char* filename);
+
+  /**
+   * @brief アップロードキューの先頭ファイルをスキップ（失敗時用）
+   * @param filename スキップするファイル名（先頭スラッシュ付き）
+   * @return 成功時true、先頭行が一致しない場合false
+   */
+  bool skipFileInUploadList(const char* filename);
+
+  /**
+   * @brief アップロードキューから次のファイルを取得
+   * @param filenameBuffer ファイル名を格納するバッファ
+   * @param bufferSize バッファサイズ
+   * @return ファイルが見つかった場合true、空の場合false
+   */
+  bool getNextFileToUpload(char* filenameBuffer, size_t bufferSize);
+
+  /**
+   * @brief アップロードキューが空か確認
+   * @return 空の場合true
+   */
+  bool isUploadQueueEmpty();
+
+  /**
+   * @brief アップロードキューファイルを初期化（存在しない場合作成）
+   */
+  void initializeUploadQueue();
+
 private:
   File _file;
 
@@ -71,6 +111,15 @@ private:
    * @param file ファイルオブジェクト
    */
   void _writeHeader(File& file);
+
+  /**
+   * @brief ファイルから1行を読み込む（プライベートヘルパー）
+   * @param file ファイルオブジェクト
+   * @param buffer 読み込みバッファ
+   * @param bufferSize バッファサイズ
+   * @return 行が読めた場合true、ファイル終了時false
+   */
+  bool _readLineFromFile(File& file, char* buffer, size_t bufferSize);
 };
 
 #endif  // STORAGE_H

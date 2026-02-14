@@ -5,9 +5,12 @@
   "scripts": {
     "dev": "wrangler pages dev",
     "deploy": "wrangler pages deploy",
-    "tail": "wrangler pages tail"
+    "tail": "wrangler pages tail",
+    "format": "biome check --write .",
+    "format:check": "biome check ."
   },
   "devDependencies": {
+    "@biomejs/biome": "2.3.15",
     "@cloudflare/workers-types": "^4.0.0",
     "typescript": "^5.0.0",
     "wrangler": "^3.0.0"

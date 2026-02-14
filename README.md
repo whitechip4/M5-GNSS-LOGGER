@@ -367,6 +367,25 @@ docker run --rm -v "$(pwd):/workspace" clang-format-check
 
 フォーマットは、[`.clang-format`](.clang-format)を使用（Googleベースのスタイル、2スペースインデント、100文字行制限）。
 
+### コードフォーマット（TypeScript）
+
+```bash
+# リポジトリルートから - フォーマットチェック（読み取り専用、CI用）
+npm run format:check
+
+# ファイルをフォーマット（その場で修正）
+npm run format
+
+# 各プロジェクトで個別にフォーマット
+cd cloud/workers/gpx-converter-scheduler
+npm run format
+
+cd ../../pages-functions/gpx-converter
+npm run format
+```
+
+フォーマットは、[`biome.json`](biome.json)を使用（Google TypeScript Style Guide準拠、2スペースインデント、100文字行制限）。
+
 ### デバッグ
 
 #### M5Stackのシリアルモニタ

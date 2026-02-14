@@ -26,17 +26,17 @@ const MAX_GPX_FILE_SIZE = 4 * 1024 * 1024; // 4MB (Google My Maps limit is 5MB)
  * Process a single CSV file and convert to GPX
  */
 export async function processCSVFile(key: string, env: Env): Promise<boolean> {
-  console.log('Processing object:', key);
+  console.log("Processing object:", key);
 
   // Only process CSV files in gnss-data/ directory
-  if (!key.startsWith('gnss-data/') || !key.endsWith('.csv')) {
-    console.log('Skipping non-csv file or wrong directory:', key);
+  if (!key.startsWith("gnss-data/") || !key.endsWith(".csv")) {
+    console.log("Skipping non-csv file or wrong directory:", key);
     return false;
   }
 
   // Skip already processed GPX files
-  if (key.includes('/gpx/')) {
-    console.log('Skipping GPX file:', key);
+  if (key.includes("/gpx/")) {
+    console.log("Skipping GPX file:", key);
     return false;
   }
 
@@ -44,7 +44,7 @@ export async function processCSVFile(key: string, env: Env): Promise<boolean> {
   const gpxPath = generateGPXPath(key);
   const existingGpx = await env.BUCKET.get(gpxPath);
   if (existingGpx) {
-    console.log('GPX already exists, skipping:', gpxPath);
+    console.log("GPX already exists, skipping:", gpxPath);
     return false;
   }
 
@@ -52,7 +52,7 @@ export async function processCSVFile(key: string, env: Env): Promise<boolean> {
     // Get object from R2
     const object = await env.BUCKET.get(key);
     if (!object) {
-      console.error('Object not found:', key);
+      console.error("Object not found:", key);
       return false;
     }
 
@@ -65,10 +65,12 @@ export async function processCSVFile(key: string, env: Env): Promise<boolean> {
 
     // Validate timezone offset (NaN check)
     if (isNaN(timezoneOffset)) {
-      console.warn('Invalid timezone metadata, using default (JST+9):', timezoneMeta);
+      console.warn("Invalid timezone metadata, using default (JST+9):", timezoneMeta);
       timezoneOffset = 9;
     }
-    console.log(`Timezone offset from metadata: ${timezoneOffset} (metadata: ${timezoneMeta || 'not found, using default'})`);
+    console.log(
+      `Timezone offset from metadata: ${timezoneOffset} (metadata: ${timezoneMeta || "not found, using default"})`
+    );
 
     // Parse CSV
     const points = parseCSV(csvText);
@@ -80,9 +82,8 @@ export async function processCSVFile(key: string, env: Env): Promise<boolean> {
     // Convert and upload GPX (may split into multiple files if too large)
     await convertCSVToGPXAndUpload(points, gpxPath, env.BUCKET, key, timezoneOffset);
     return true;
-
   } catch (error) {
-    console.error('Error processing object:', key, error);
+    console.error("Error processing object:", key, error);
     return false;
   }
 }
@@ -103,7 +104,13 @@ export async function convertCSVToGPXAndUpload(
 
   while (currentStartIndex < points.length) {
     const outputPath = fileNumber === 0 ? basePath : getSplitFilePath(basePath, fileNumber);
-    const gpxContent = generateGPX(points, currentStartIndex, sourceFileName, fileNumber, timezoneOffset);
+    const gpxContent = generateGPX(
+      points,
+      currentStartIndex,
+      sourceFileName,
+      fileNumber,
+      timezoneOffset
+    );
 
     // Check file size and split if needed
     const fileSize = new Blob([gpxContent]).size;
@@ -148,8 +155,8 @@ export async function convertCSVToGPXAndUpload(
 async function uploadGPXToR2(bucket: R2Bucket, path: string, gpxContent: string): Promise<void> {
   await bucket.put(path, gpxContent, {
     httpMetadata: {
-      contentType: 'application/gpx+xml'
-    }
+      contentType: "application/gpx+xml",
+    },
   });
   console.log(`✅ Uploaded GPX: ${path}`);
 }
@@ -159,7 +166,7 @@ async function uploadGPXToR2(bucket: R2Bucket, path: string, gpxContent: string)
  */
 function getSplitFilePath(basePath: string, fileNumber: number): string {
   // Replace .gpx with _N.gpx
-  return basePath.replace('.gpx', `_${fileNumber}.gpx`);
+  return basePath.replace(".gpx", `_${fileNumber}.gpx`);
 }
 
 /**
@@ -173,7 +180,7 @@ export function generateGPX(
   timezoneOffset: number
 ): string {
   if (points.length === 0) {
-    throw new Error('No points to convert');
+    throw new Error("No points to convert");
   }
 
   const firstPoint = points[0];
@@ -196,12 +203,15 @@ export function generateGPX(
   const startTime = formatDateTimeForGPX(firstPoint.date, firstPoint.time, timezoneOffset);
 
   // Generate track points
-  const trackPoints = points.map(p =>
-    `      <trkpt lat="${p.lat.toFixed(7)}" lon="${p.lng.toFixed(7)}">
+  const trackPoints = points
+    .map(
+      (p) =>
+        `      <trkpt lat="${p.lat.toFixed(7)}" lon="${p.lng.toFixed(7)}">
         <ele>${p.alt.toFixed(1)}</ele>
         <time>${formatDateTimeForGPX(p.date, p.time, timezoneOffset)}</time>
       </trkpt>`
-  ).join('\n');
+    )
+    .join("\n");
 
   // Build GPX XML
   const gpx = `<?xml version="1.0" encoding="utf-8"?>
@@ -211,7 +221,7 @@ export function generateGPX(
     <bounds minlat="${minLat.toFixed(7)}" maxlat="${maxLat.toFixed(7)}" minlon="${minLng.toFixed(7)}" maxlon="${maxLng.toFixed(7)}"/>
   </metadata>
   <trk>
-    <name>${DEFAULT_TITLE}${fileNumber > 0 ? ` (Part ${fileNumber + 1})` : ''}</name>
+    <name>${DEFAULT_TITLE}${fileNumber > 0 ? ` (Part ${fileNumber + 1})` : ""}</name>
     <trkseg>
 ${trackPoints}
     </trkseg>
@@ -230,14 +240,14 @@ ${trackPoints}
  */
 function formatDateTimeForGPX(date: string, time: string, timezoneOffset: number): string {
   // Convert YYYY/MM/DD to YYYY-MM-DD
-  const isoDate = date.replace(/\//g, '-');
+  const isoDate = date.replace(/\//g, "-");
 
   // Build timezone offset string in ISO 8601 format (+HH:mm or -HH:mm)
-  const tzOffsetSign = timezoneOffset >= 0 ? '+' : '-';
+  const tzOffsetSign = timezoneOffset >= 0 ? "+" : "-";
   const tzOffsetAbs = Math.abs(timezoneOffset);
   const tzOffsetHours = Math.floor(tzOffsetAbs);
   const tzOffsetMinutes = Math.round((tzOffsetAbs - tzOffsetHours) * 60);
-  const tzOffsetStr = `${tzOffsetSign}${String(tzOffsetHours).padStart(2, '0')}:${String(tzOffsetMinutes).padStart(2, '0')}`;
+  const tzOffsetStr = `${tzOffsetSign}${String(tzOffsetHours).padStart(2, "0")}:${String(tzOffsetMinutes).padStart(2, "0")}`;
 
   // Create ISO 8601 string with explicit timezone offset
   const localDateTimeWithTz = `${isoDate}T${time}${tzOffsetStr}`;
@@ -246,29 +256,29 @@ function formatDateTimeForGPX(date: string, time: string, timezoneOffset: number
   const localDate = new Date(localDateTimeWithTz);
 
   // Format to ISO 8601 with Z suffix (UTC)
-  return localDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
+  return localDate.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
 /**
  * Parse CSV content into array of GNSS points
  */
 export function parseCSV(csvText: string): GNSSPoint[] {
-  const lines = csvText.split('\n').filter(line => line.trim() !== '');
+  const lines = csvText.split("\n").filter((line) => line.trim() !== "");
 
   if (lines.length === 0) {
     return [];
   }
 
   // Skip header line if it contains column names
-  const startIndex = lines[0].toLowerCase().includes('date') ? 1 : 0;
+  const startIndex = lines[0].toLowerCase().includes("date") ? 1 : 0;
   const dataLines = lines.slice(startIndex);
 
   const points: GNSSPoint[] = [];
 
   for (const line of dataLines) {
-    const parts = line.split(',');
+    const parts = line.split(",");
     if (parts.length < 8) {
-      console.log('Skipping malformed line:', line);
+      console.log("Skipping malformed line:", line);
       continue;
     }
 
@@ -279,7 +289,7 @@ export function parseCSV(csvText: string): GNSSPoint[] {
 
     // Validate coordinates
     if (isNaN(lat) || isNaN(lng)) {
-      console.log('Skipping invalid coordinates:', parts[2], parts[3]);
+      console.log("Skipping invalid coordinates:", parts[2], parts[3]);
       continue;
     }
 
@@ -291,7 +301,7 @@ export function parseCSV(csvText: string): GNSSPoint[] {
       alt: parseFloat(parts[4]),
       spd: parseFloat(parts[5]),
       siv: parseInt(parts[6]),
-      hdop: parseFloat(parts[7])
+      hdop: parseFloat(parts[7]),
     };
 
     points.push(point);
@@ -308,9 +318,9 @@ export function generateGPXPath(csvPath: string): string {
   // Input: gnss-data/20240101/gnss_csv_data_20240101_120000.csv
   // Output: gnss-data/20240101/gpx/gnss_csv_data_20240101_120000.gpx
 
-  const parts = csvPath.split('/');
+  const parts = csvPath.split("/");
   const fileName = parts[parts.length - 1];
-  const fileNameWithoutExt = fileName.replace('.csv', '');
+  const fileNameWithoutExt = fileName.replace(".csv", "");
 
   // Extract date from filename (format: gnss_csv_data_YYYYMMDD_HHMMSS.csv)
   // Or from path (gnss-data/YYYYMMDD/filename.csv)
@@ -319,12 +329,12 @@ export function generateGPXPath(csvPath: string): string {
   const dateMatch = fileName.match(/gnss_csv_data_(\d{8})_/);
   if (dateMatch) {
     dateStr = dateMatch[1];
-  } else if (parts.length >= 2 && parts[0] === 'gnss-data') {
+  } else if (parts.length >= 2 && parts[0] === "gnss-data") {
     // Try to get date from directory
     dateStr = parts[1];
   } else {
     // Use current date
-    dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   }
 
   return `gnss-data/${dateStr}/gpx/${fileNameWithoutExt}.gpx`;
@@ -341,7 +351,7 @@ const JST_OFFSET_HOURS = 9;
 function getCurrentDateInJST(): Date {
   const now = new Date();
   // UTCにJSTオフセットを加算（ミリ秒単位）
-  const jstTime = new Date(now.getTime() + (JST_OFFSET_HOURS * 60 * 60 * 1000));
+  const jstTime = new Date(now.getTime() + JST_OFFSET_HOURS * 60 * 60 * 1000);
   return jstTime;
 }
 
@@ -369,8 +379,8 @@ export function generateDateRange(days: number): string[] {
 
     // UTC日付としてYYYYMMDD形式にフォーマット
     const year = date.getUTCFullYear();
-    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(date.getUTCDate()).padStart(2, '0');
+    const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(date.getUTCDate()).padStart(2, "0");
 
     dates.push(`${year}${month}${day}`);
   }

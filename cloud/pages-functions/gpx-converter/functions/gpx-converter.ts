@@ -1,10 +1,10 @@
-import type { PagesFunction } from '@cloudflare/workers-types';
+import type { PagesFunction } from "@cloudflare/workers-types";
 import {
-  processCSVFile,
   type Env,
   generateDateRange,
-  parseConversionDays
-} from '../shared/gnss-utils';
+  parseConversionDays,
+  processCSVFile,
+} from "../shared/gnss-utils";
 
 /**
  * List all objects in R2 bucket with continuation token support
@@ -18,7 +18,7 @@ async function listAllObjects(bucket: R2Bucket, prefix: string): Promise<R2Objec
     const listed = await bucket.list({
       prefix,
       cursor: continuationToken,
-      limit: 1000
+      limit: 1000,
     });
 
     allObjects.push(...listed.objects);
@@ -36,10 +36,7 @@ async function listAllObjects(bucket: R2Bucket, prefix: string): Promise<R2Objec
  * @param dateDates YYYYMMDD形式の日付文字列配列
  * @returns 全てのR2オブジェクト
  */
-async function listObjectsByDateRange(
-  bucket: R2Bucket,
-  dateDates: string[]
-): Promise<R2Object[]> {
+async function listObjectsByDateRange(bucket: R2Bucket, dateDates: string[]): Promise<R2Object[]> {
   const allObjects: R2Object[] = [];
 
   for (const dateStr of dateDates) {
@@ -67,7 +64,7 @@ async function listObjectsByDateRange(
 export const onRequest: PagesFunction<Env> = async (context) => {
   const { env, request } = context;
 
-  console.log('Pages Function triggered:', request.method, request.url);
+  console.log("Pages Function triggered:", request.method, request.url);
 
   // 環境変数から処理対象日数を取得
   const conversionDays = parseConversionDays(env.CONVERSION_DAYS);
@@ -76,16 +73,16 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   if (conversionDays === 0) {
     // 後方互換性: 環境変数未設定時は全データ処理
-    console.log('CONVERSION_DAYS not set or set to 0, processing all data');
-    allObjects = await listAllObjects(env.BUCKET, 'gnss-data/');
+    console.log("CONVERSION_DAYS not set or set to 0, processing all data");
+    allObjects = await listAllObjects(env.BUCKET, "gnss-data/");
   } else {
     // 日付範囲を生成して各日付ディレクトリを処理
     const dateRange = generateDateRange(conversionDays);
-    console.log(`Processing last ${conversionDays} days:`, dateRange.join(', '));
+    console.log(`Processing last ${conversionDays} days:`, dateRange.join(", "));
     allObjects = await listObjectsByDateRange(env.BUCKET, dateRange);
   }
 
-  console.log('Found total', allObjects.length, 'objects to process');
+  console.log("Found total", allObjects.length, "objects to process");
 
   let processed = 0;
   let skipped = 0;
@@ -99,13 +96,16 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     }
   }
 
-  return new Response(JSON.stringify({
-    status: 'Processing complete',
-    processed: processed,
-    skipped: skipped,
-    total: allObjects.length,
-    conversionDays: conversionDays === 0 ? 'all' : conversionDays
-  }), {
-    headers: { 'Content-Type': 'application/json' }
-  });
+  return new Response(
+    JSON.stringify({
+      status: "Processing complete",
+      processed: processed,
+      skipped: skipped,
+      total: allObjects.length,
+      conversionDays: conversionDays === 0 ? "all" : conversionDays,
+    }),
+    {
+      headers: { "Content-Type": "application/json" },
+    }
+  );
 };

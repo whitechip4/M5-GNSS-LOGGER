@@ -62,8 +62,7 @@ public:
    * @deprecated Use uploadFileStream() instead for better memory efficiency.
    *             This method loads entire file into memory.
    */
-  [[deprecated("Use uploadFileStream instead for better memory efficiency")]]
-  bool
+  [[deprecated("Use uploadFileStream instead for better memory efficiency")]] bool
   uploadData(const char* data, size_t dataSize, const char* remoteKey, int8_t timezoneOffset = 9);
 
 #ifdef TESTING

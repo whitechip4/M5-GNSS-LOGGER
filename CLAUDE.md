@@ -86,6 +86,25 @@ docker run --rm -v "$(pwd):/workspace" clang-format-check
 
 フォーマットは、main/masterブランチへのpush/PR時にGitHub Actionsで強制適用されます。プロジェクトルートの[`.clang-format`](.clang-format)を使用（Googleベースのスタイル、2スペースインデント、100文字行制限）。
 
+### コードフォーマット（TypeScript）
+
+```bash
+# リポジトリルートから - フォーマットチェック（読み取り専用、CI用）
+npm run format:check
+
+# ファイルをフォーマット（その場で修正）
+npm run format
+
+# 各プロジェクトで個別にフォーマット
+cd cloud/workers/gpx-converter-scheduler
+npm run format
+
+cd ../../pages-functions/gpx-converter
+npm run format
+```
+
+フォーマットは、main/masterブランチへのpush/PR時にGitHub Actionsで強制適用されます。プロジェクトルートの[`biome.json`](biome.json)を使用（Google TypeScript Style Guide準拠、2スペースインデント、100文字行制限）。
+
 ## アーキテクチャ
 
 ### M5Stackファームウェアソースコード ([m5GnssLogger/src/](m5GnssLogger/src/))

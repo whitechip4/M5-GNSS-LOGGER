@@ -1,6 +1,6 @@
 # M5-GNSS-LOGGER
 
-M5Stack Core2でGNSSデータを記録し、Cloudflare R2を経由してGPX形式に自動変換するエンドツーエンドのロギングシステム
+M5Stack Core2でGNSSデータを記録し、Cloudflare R2を経由してGPX形式に変換するやつ
 
 ## 概要
 
@@ -22,39 +22,7 @@ M5-GNSS-LOGGERは、3つの主要コンポーネントからなるGNSS（GPS）�
 
 ### システム構成図
 
-TODO:後でDraw.ioとかで図描きたい
-
-```
-┌─────────────────┐
-│  M5Stack Core2  │
-│  (m5GnssLogger) │
-└────────┬────────┘
-         │ GNSSデータ (1秒ごと)
-         ▼
-   ┌─────────┐
-   │ SDカード │ CSV保存
-   └────┬────┘
-        │
-        │ WiFi検出時
-        ▼
-┌─────────────────┐
-│  Cloudflare R2  │ ← CSVアップロード
-└────────┬────────┘
-         │
-         │ Scheduler Worker (Cron毎時0分 / HTTPトリガー)
-         ▼
-┌─────────────────────┐
-│  Pages Functions     │ ← CSV → GPX変換
-│  (gpx-converter)    │
-└────────┬────────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Cloudflare R2  │ ← GPXファイル保存
-│  (gnss-data/    │    (gnss-data/YYYYMMDD/gpx/*.gpx)
-│   YYYYMMDD/gpx) │
-└─────────────────┘
-```
+![system-architecture-diagram.svg](system-architecture-diagram.svg)
 
 ### 3つの主要コンポーネント
 

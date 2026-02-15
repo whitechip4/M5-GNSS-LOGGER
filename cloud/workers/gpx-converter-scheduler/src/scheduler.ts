@@ -74,7 +74,7 @@ export default {
     }
 
     return new Response(
-      "GPX Converter Scheduler Worker\nEndpoints:\n  GET /test - Health check\n  POST /trigger - Manual trigger\n  Scheduled: Triggers Pages Function hourly"
+      "GPX Converter Scheduler Worker\nEndpoints:\n  GET /test - Health check\n  Scheduled: Triggers Pages Function hourly"
     );
   },
 

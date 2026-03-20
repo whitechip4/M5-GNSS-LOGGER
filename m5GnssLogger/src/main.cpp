@@ -93,9 +93,12 @@ void setup() {
   storageModule.writeHeader(fileName);
   storageModule.writeHeader(fileRawDataName);
 
-  // 初期データ書き込み
-  storageModule.writeData(gnssData, fileName);
-  storageModule.writeRawData(gnssData, fileRawDataName);
+  // 初期データ書き込み（GNSSデータが有効な場合のみ）
+  if (gnssModule.isValid(gnssData)) {
+    storageModule.writeData(gnssData, fileName);
+    storageModule.writeRawData(gnssData, fileRawDataName);
+    debug_print("MAIN", "Initial data recorded");
+  }
 
   // アップロードキューにファイルを追加
   storageModule.addFileToUploadList(fileName);

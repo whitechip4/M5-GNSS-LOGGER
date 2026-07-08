@@ -32,6 +32,9 @@ typedef struct {
   float hdop;
   float pdop;
 
+  float hacc;  // 水平精度推定 [m] (u-blox hAcc)
+  float vacc;  // 垂直精度推定 [m] (u-blox vAcc)
+
   bool isFixOk;
 
 } GNSS_DATA;
@@ -43,6 +46,19 @@ typedef struct {
 #define GNSS_MIN_SATELLITES 5
 #define GNSS_RECOVERY_BUFFER_MS 5000
 #define GNSS_POSITION_THRESHOLD 0.001f
+
+// マルチパス（半屋内等）による位置飛び対策の閾値
+// hAccが閾値を超えた測位は受信機自身が信頼できないと推定しているため棄却する
+#define GNSS_HACC_THRESHOLD_M 20.0f
+// 想定最大移動速度。実測データで高速走行時に報告速度149km/hを確認しているため200とする
+#define GNSS_MAX_SPEED_KMH 200.0f
+// 想定最大垂直速度 [m/s]（山岳道路の登降でも5m/s未満。発散時は10m/s超になる）
+#define GNSS_MAX_VERTICAL_SPEED_MPS 10.0f
+// ジャンプ判定の許容マージン（GNSSノイズ吸収用）
+#define GNSS_JUMP_MARGIN_M 100.0f
+#define GNSS_VERTICAL_JUMP_MARGIN_M 50.0f
+// ジャンプ後の新しい位置を受け入れるまでに一貫した測位が継続すべき時間
+#define GNSS_JUMP_REACCEPT_MS 5000
 
 /**
  * @brief バッテリー設定

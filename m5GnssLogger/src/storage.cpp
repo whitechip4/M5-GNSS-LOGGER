@@ -268,16 +268,18 @@ bool StorageModule::writeData(const GNSS_DATA& data, const char* fileName) {
           data.minute,
           data.second);
 
-  char lineStr[128];
+  char lineStr[160];
   sprintf(lineStr,
-          "%s,%lf,%lf,%.1f,%.1f,%d,%.2f",
+          "%s,%lf,%lf,%.1f,%.1f,%d,%.2f,%.1f,%.1f",
           datetime,
           data.lat,
           data.lng,
           data.alt,
           data.vel,
           data.siv,
-          data.hdop);
+          data.hdop,
+          data.hacc,
+          data.vacc);
 
   _file.println(lineStr);
   _file.close();
@@ -320,5 +322,5 @@ void StorageModule::generateFileName(const char* baseName,
 }
 
 void StorageModule::_writeHeader(File& file) {
-  file.println("date,time,lat,lng,alt,spd,siv,hdop");
+  file.println("date,time,lat,lng,alt,spd,siv,hdop,hacc,vacc");
 }

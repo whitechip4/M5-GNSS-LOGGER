@@ -15,8 +15,15 @@ echo "Building m5GnssLogger..."
 echo "Project directory: $PROJECT_DIR"
 echo ""
 
+# Use pio from PATH if available, otherwise fall back to the default PlatformIO install location
+if command -v pio > /dev/null 2>&1; then
+  PIO="pio"
+else
+  PIO="$HOME/.platformio/penv/bin/pio"
+fi
+
 cd "$PROJECT_DIR"
-pio run --environment m5stack-core2
+"$PIO" run --environment m5stack-core2
 
 echo ""
 echo "Build completed successfully!"

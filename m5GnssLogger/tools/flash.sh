@@ -16,8 +16,15 @@ echo "Project directory: $PROJECT_DIR"
 echo "Make sure your M5Stack Core2 is connected via USB!"
 echo ""
 
+# Use pio from PATH if available, otherwise fall back to the default PlatformIO install location
+if command -v pio > /dev/null 2>&1; then
+  PIO="pio"
+else
+  PIO="$HOME/.platformio/penv/bin/pio"
+fi
+
 cd "$PROJECT_DIR"
-pio run --target upload --environment m5stack-core2
+"$PIO" run --target upload --environment m5stack-core2
 
 echo ""
 echo "Upload completed successfully!"

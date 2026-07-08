@@ -1,14 +1,19 @@
 #include "config.h"
 #include ".env.h"
+#include <Preferences.h>
 #include <string.h>
 
 // ============================================================================
 // Timezone Configuration
 // ============================================================================
 // タイムゾーンオフセット（時間単位）
-// デフォルト: JST（UTC+9）
-// 将来的にWebUIから変更してSPIFFS/フラッシュに保存
+// NVSに保存値があれば起動時にloadTimezoneFromNvs()で上書きされる
+// この値はNVS未保存時のフォールバック（デフォルト: JST=UTC+9）
 int8_t timezoneOffsetHours = 9;
+
+// NVSの名前空間とキー
+static const char* kNvsNamespace = "gnss_logger";
+static const char* kNvsKeyTimezone = "tz_offset";
 
 // ============================================================================
 // Application Configuration Namespace
@@ -47,6 +52,33 @@ bool isR2Configured() {
 
 int8_t getTimezoneOffset() {
   return timezoneOffsetHours;
+}
+
+void setTimezoneOffset(int8_t offsetHours) {
+  if (offsetHours < TIMEZONE_OFFSET_MIN) {
+    offsetHours = TIMEZONE_OFFSET_MIN;
+  }
+  if (offsetHours > TIMEZONE_OFFSET_MAX) {
+    offsetHours = TIMEZONE_OFFSET_MAX;
+  }
+  timezoneOffsetHours = offsetHours;
+}
+
+void loadTimezoneFromNvs() {
+  Preferences prefs;
+  // 名前空間が未作成（一度も保存していない）場合はbeginが失敗し、デフォルト値を維持する
+  if (prefs.begin(kNvsNamespace, true)) {
+    setTimezoneOffset(prefs.getChar(kNvsKeyTimezone, timezoneOffsetHours));
+    prefs.end();
+  }
+}
+
+void saveTimezoneToNvs() {
+  Preferences prefs;
+  if (prefs.begin(kNvsNamespace, false)) {
+    prefs.putChar(kNvsKeyTimezone, timezoneOffsetHours);
+    prefs.end();
+  }
 }
 
 // ============================================================================

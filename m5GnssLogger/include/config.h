@@ -53,9 +53,13 @@ typedef struct {
  * @brief タイムゾーンオフセット（時間単位）
  * 日本標準時: +9
  * 台湾時間: +8
- * 変数として動的に管理（将来的にWebUIから変更可能）
+ * NVS保存値があれば起動時に上書きされる（電源ON時ボタンA長押しで設定モード）
  */
 extern int8_t timezoneOffsetHours;
+
+// タイムゾーンオフセットの設定可能範囲（時間単位）
+#define TIMEZONE_OFFSET_MIN -12
+#define TIMEZONE_OFFSET_MAX 14
 
 /**
  * @brief NTPサーバー設定
@@ -76,6 +80,8 @@ extern int8_t timezoneOffsetHours;
 // Display update interval in milliseconds (calculated from Hz)
 #define DELAY_DISPLAY_UPDATE_MS (1000 / DISPLAY_UPDATE_INTERVAL_HZ)
 #define DELAY_BUTTON_POLL_MS 50
+// 起動時のタイムゾーン設定モード入場判定でボタンAを監視する時間
+#define BOOT_BUTTON_CHECK_MS 2000
 #define DELAY_GNSS_STABILITY_CHECK_MS 500
 #define DELAY_WIFI_PROGRESS_MS 500
 #define DELAY_NTP_RETRY_MS 500
@@ -85,6 +91,8 @@ extern int8_t timezoneOffsetHours;
 #define DELAY_NTP_SYNC_MS 5000
 #define DELAY_SD_ERROR_DISPLAY_MS 10000
 #define DELAY_CONFIRM_TIMEOUT_MS 10000
+// タイムゾーン設定モードの無操作タイムアウト（保存せず通常起動に戻る）
+#define DELAY_TIMEZONE_SETTING_TIMEOUT_MS 15000
 #define DELAY_WIFI_CONNECT_TIMEOUT_MS 30000
 #define WIFI_CONNECTION_CHECK_INTERVAL_MS 5000
 
@@ -187,6 +195,27 @@ bool isR2Configured();
  * @return タイムゾーンオフセット（例: JST=+9, UTC+0）
  */
 int8_t getTimezoneOffset();
+
+/**
+ * @brief タイムゾーンオフセットを設定（時間単位）
+ * @param offsetHours タイムゾーンオフセット（TIMEZONE_OFFSET_MIN〜MAXにクランプされる）
+ */
+void setTimezoneOffset(int8_t offsetHours);
+
+/**
+ * @brief NVSに保存されたタイムゾーンオフセットを読み込む
+ *
+ * 保存値があればtimezoneOffsetHoursを上書きし、
+ * 無ければコンパイル時のデフォルト値のまま維持する
+ */
+void loadTimezoneFromNvs();
+
+/**
+ * @brief 現在のタイムゾーンオフセットをNVSに保存する
+ *
+ * 保存値は次回起動以降のloadTimezoneFromNvs()で復元される
+ */
+void saveTimezoneToNvs();
 
 // 内部実装用（config.cppで定義）
 extern WIFI_CONFIG _wifiConfig;

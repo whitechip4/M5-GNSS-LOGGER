@@ -33,6 +33,79 @@ DISPLAY_MODE viewMode = DISPLAY_MODE_DETAIL;
 char fileName[BUFFER_FILENAME_MAX] = "";
 char fileRawDataName[BUFFER_FILENAME_RAW_MAX] = "";
 
+void _runTimezoneSettingMode() {
+  int8_t offset = AppConfig::getTimezoneOffset();
+
+  displayModule.clear();
+  displayModule.logMessage("== Timezone Setting ==");
+  displayModule.logMessage("BtnA: -1h / BtnC: +1h");
+  displayModule.logMessage("BtnB: Save & Exit");
+
+  char offsetStr[BUFFER_TIME_STR];
+  sprintf(offsetStr, "Timezone: UTC%+d", offset);
+  displayModule.logMessage(offsetStr);
+
+  // 無操作タイムアウト管理（誤操作で入場した場合は保存せず通常起動に戻る）
+  uint32_t lastActivityMs = millis();
+  bool timedOut = false;
+
+  // 起動時の長押しが-1h操作として誤検出されないよう、一度離されるまで待つ
+  // （何かが画面に触れ続けている場合もタイムアウトで抜ける）
+  while (M5.BtnA.isPressed() && !timedOut) {
+    M5.update();
+    timedOut = (millis() - lastActivityMs > DELAY_TIMEZONE_SETTING_TIMEOUT_MS);
+    delay(DELAY_BUTTON_POLL_MS);
+  }
+
+  while (!timedOut) {
+    M5.update();
+    vibrationProcess();
+
+    if (millis() - lastActivityMs > DELAY_TIMEZONE_SETTING_TIMEOUT_MS) {
+      timedOut = true;
+      break;
+    }
+
+    if (M5.BtnA.wasPressed() || M5.BtnB.wasPressed() || M5.BtnC.wasPressed()) {
+      lastActivityMs = millis();
+    }
+
+    bool changed = false;
+    if (M5.BtnA.wasPressed() && offset > TIMEZONE_OFFSET_MIN) {
+      offset--;
+      changed = true;
+    }
+    if (M5.BtnC.wasPressed() && offset < TIMEZONE_OFFSET_MAX) {
+      offset++;
+      changed = true;
+    }
+    if (changed) {
+      vibration(100);
+      sprintf(offsetStr, "Timezone: UTC%+d", offset);
+      displayModule.logMessage(offsetStr);
+    }
+
+    if (M5.BtnB.wasPressed()) {
+      AppConfig::setTimezoneOffset(offset);
+      AppConfig::saveTimezoneToNvs();
+      vibration(200);
+      displayModule.logMessage("Saved!");
+      delay(DELAY_GENERAL_TIMING_MS);
+      break;
+    }
+
+    delay(DELAY_BUTTON_POLL_MS);
+  }
+
+  if (timedOut) {
+    displayModule.logMessage("Timeout: not saved");
+    delay(DELAY_GENERAL_TIMING_MS);
+  }
+
+  stopVibration();
+  displayModule.clear();
+}
+
 void setup() {
   // M5Core2 initialization: (SDEnable, SerialEnable, LCDEnable, I2CEnable)
   // Note: LCD is disabled here to avoid conflict with LovyanGFX
@@ -41,6 +114,26 @@ void setup() {
   Serial2.begin(38400, SERIAL_8N1, 13, 14);  // NEO_M9N用
 
   displayModule.clear();
+
+  // NVSに保存されたタイムゾーンを読み込む（未保存時はコンパイル時デフォルト値）
+  AppConfig::loadTimezoneFromNvs();
+
+  // 起動直後のボタンA押下でのみタイムゾーン設定モードに入る
+  // （タッチボタンの誤操作防止のため、通常起動では設定画面を出さない）
+  // 注意: タッチパネルは電源投入時に静電容量をキャリブレーションするため、
+  // 電源ON前から押しっぱなしの指はベースラインとして無効化され検出できない。
+  // このためプロンプト表示後に押してもらう方式とし、一定時間ポーリングして判定する
+  displayModule.logMessage("Hold BtnA for TZ setting...");
+  const uint32_t touchCheckStart = millis();
+  while (millis() - touchCheckStart < BOOT_BUTTON_CHECK_MS) {
+    M5.update();
+    if (M5.BtnA.isPressed()) {
+      _runTimezoneSettingMode();
+      break;
+    }
+    delay(DELAY_BUTTON_POLL_MS);
+  }
+
   displayModule.logMessage("Initializing...");
 
   // タイムゾーン表示

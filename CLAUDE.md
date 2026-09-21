@@ -140,6 +140,8 @@ npm run format
   - CSVファイルをGPX 1.1形式に変換（`<trk><desc>` に入力点数・除去点数・標高補正点数を記録）
   - 4MB超のファイルは自動分割（Google My Maps対応）
   - 出力先: `gnss-data/YYYYMMDD/gpx/filename.gpx`（YYYYMMDD はCSVが置かれているディレクトリの日付。ファイル名の日付ではない）
+  - 変換ごとに索引 `gnss-data/index.json` を更新（[shared/track-index.ts](cloud/pages-functions/gpx-converter/shared/track-index.ts)）。始点座標から推定した国（[shared/country-lookup.ts](cloud/pages-functions/gpx-converter/shared/country-lookup.ts)、矩形判定）・開始/終了時刻(UTC)・距離・除去統計を持ち、ビューアの国別フィルタに使う
+  - 生成済みGPXは customMetadata `generatorVersion` を持ち、`force` 再生成でも同バージョンかつ索引済みならスキップする。クリーナーや出力形式を変えたら `GPX_GENERATOR_VERSION` を上げること
 - **クエリパラメータ**: `?force=1` で既存GPXを再生成、`?days=N` で `CONVERSION_DAYS` を一時上書き（0=全期間）、`?date=YYYYMMDD` で1日分だけ、`?limit=N` で1リクエストの変換数を制限（force時は既定5。全件を1回で回すとCPU時間超過でエラー1102になる。応答の `remaining` が0になるまで繰り返す）
 - **共通処理**: [shared/gnss-utils.ts](cloud/pages-functions/gpx-converter/shared/gnss-utils.ts) に変換ロジックを記述
 

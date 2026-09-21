@@ -37,6 +37,11 @@ export interface TrackIndexEntry {
   /** 生成バージョンと生成時刻 */
   generatorVersion: string;
   generatedAt: string;
+  /**
+   * エントリの出自。"csv" は通常の変換、"gpx" は CSV の無い GPX 本文から後追いで作ったもの
+   * （位置飛び除去は掛かっていない。timezoneOffset は不明なので 0）
+   */
+  source?: "csv" | "gpx";
 }
 
 export interface TrackIndex {
@@ -84,7 +89,101 @@ export function buildIndexEntry(
     distanceKm: Number((distance / 1000).toFixed(2)),
     generatorVersion,
     generatedAt: new Date().toISOString(),
+    source: "csv",
   };
+}
+
+/** GPX 本文から索引エントリを作る（CSV が無い手動アップロード GPX 向けのフォールバック） */
+export function buildIndexEntryFromGPX(gpxText: string, gpxKey: string): TrackIndexEntry | null {
+  // <trkpt lat=".." lon=".."> ... <time>..</time> を順に拾う（ele/time の有無は問わない）
+  const re = /<trkpt\s+lat="([-\d.]+)"\s+lon="([-\d.]+)"[^>]*>([\s\S]*?)<\/trkpt>/g;
+  const timeRe = /<time>([^<]+)<\/time>/;
+  let first: { lat: number; lng: number; time: string } | undefined;
+  let last: { lat: number; lng: number; time: string } | undefined;
+  let prevLat = 0;
+  let prevLng = 0;
+  let count = 0;
+  let distance = 0;
+  let m: RegExpExecArray | null = re.exec(gpxText);
+  while (m !== null) {
+    const lat = Number(m[1]);
+    const lng = Number(m[2]);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      const t = timeRe.exec(m[3]);
+      const pt = { lat, lng, time: t ? t[1] : "" };
+      if (first === undefined) {
+        first = pt;
+      } else {
+        distance += distanceM(prevLat, prevLng, lat, lng);
+      }
+      last = pt;
+      prevLat = lat;
+      prevLng = lng;
+      count++;
+    }
+    m = re.exec(gpxText);
+  }
+  if (first === undefined || last === undefined) {
+    return null;
+  }
+  const country = lookupCountry(first.lat, first.lng);
+  const dateMatch = gpxKey.match(/^gnss-data\/(\d{8})\//);
+  return {
+    gpxKey,
+    csvKey: "",
+    date: dateMatch ? dateMatch[1] : "",
+    startTime: first.time,
+    endTime: last.time,
+    startLat: Number(first.lat.toFixed(6)),
+    startLng: Number(first.lng.toFixed(6)),
+    country: country.code,
+    countryName: country.name,
+    timezoneOffset: 0,
+    points: count,
+    dropped: 0,
+    altitudeCorrected: 0,
+    distanceKm: Number((distance / 1000).toFixed(2)),
+    generatorVersion: "gpx-fallback",
+    generatedAt: new Date().toISOString(),
+    source: "gpx",
+  };
+}
+
+/**
+ * 索引に載っていない GPX を本文から索引化する（CPU時間制限があるので件数を絞る）
+ * @returns 作成したエントリと、まだ未索引で残っている件数
+ */
+export async function indexUnindexedGPX(
+  bucket: R2Bucket,
+  gpxKeys: string[],
+  indexedKeys: Set<string>,
+  limit: number
+): Promise<{ entries: TrackIndexEntry[]; remaining: number }> {
+  const targets = gpxKeys.filter((k) => !indexedKeys.has(k));
+  const entries: TrackIndexEntry[] = [];
+  let processed = 0;
+  for (const key of targets) {
+    if (limit > 0 && processed >= limit) {
+      break;
+    }
+    processed++;
+    try {
+      const obj = await bucket.get(key);
+      if (!obj) {
+        continue;
+      }
+      const entry = buildIndexEntryFromGPX(await obj.text(), key);
+      if (entry) {
+        entries.push(entry);
+        console.log(`Indexed from GPX: ${key} (${entry.countryName}, ${entry.points} pts)`);
+      } else {
+        console.log(`No track points in GPX, not indexed: ${key}`);
+      }
+    } catch (error) {
+      console.error("Failed to index GPX:", key, error);
+    }
+  }
+  return { entries, remaining: Math.max(0, targets.length - processed) };
 }
 
 /** 既存索引を読み込む（無い・壊れている場合は空） */

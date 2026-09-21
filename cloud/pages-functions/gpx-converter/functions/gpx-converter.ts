@@ -5,7 +5,12 @@ import {
   parseConversionDays,
   processCSVFile,
 } from "../shared/gnss-utils";
-import { loadTrackIndex, mergeTrackIndex, type TrackIndexEntry } from "../shared/track-index";
+import {
+  indexUnindexedGPX,
+  loadTrackIndex,
+  mergeTrackIndex,
+  type TrackIndexEntry,
+} from "../shared/track-index";
 
 /** force時に1リクエストで変換するファイル数の既定値（CPU時間制限対策） */
 const DEFAULT_FORCE_LIMIT = 5;
@@ -117,12 +122,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   let skipped = 0;
   let remaining = 0;
   const indexEntries: TrackIndexEntry[] = [];
-  // force時は索引を先に読み、索引に無いGPXも再生成対象にする
-  let indexedGpxKeys: Set<string> | undefined;
-  if (force) {
-    const index = await loadTrackIndex(env.BUCKET);
-    indexedGpxKeys = new Set(Object.keys(index.entries));
-  }
+  // 索引を先に読む。force時は索引に無いGPXも再生成対象にし、
+  // CSVの無いGPX（手動アップロード分）は本文から索引を後追い生成する
+  const index = await loadTrackIndex(env.BUCKET);
+  const indexedGpxKeys = new Set(Object.keys(index.entries));
 
   for (const object of allObjects) {
     if (limit > 0 && processed >= limit) {
@@ -139,6 +142,28 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     } else {
       skipped++;
     }
+  }
+
+  // CSVから変換されなかったGPX（手動アップロード等）を本文から索引化するフォールバック
+  // 今回変換した分は indexEntries に入っているので除外する
+  const producedKeys = new Set(indexEntries.map((e) => e.gpxKey));
+  const gpxKeys = allObjects
+    .map((o) => o.key)
+    .filter((k) => k.includes("/gpx/") && k.endsWith(".gpx") && !producedKeys.has(k));
+  const fallbackBudget = limit > 0 ? Math.max(0, limit - processed) : 0;
+  let indexedFromGpx = 0;
+  if (fallbackBudget > 0 || limit === 0) {
+    const fallback = await indexUnindexedGPX(
+      env.BUCKET,
+      gpxKeys,
+      indexedGpxKeys,
+      limit === 0 ? 0 : fallbackBudget
+    );
+    indexEntries.push(...fallback.entries);
+    indexedFromGpx = fallback.entries.length;
+    remaining += fallback.remaining;
+  } else {
+    remaining += gpxKeys.filter((k) => !indexedGpxKeys.has(k)).length;
   }
 
   // ビューア用の索引（始点の国・開始時刻・距離など）を更新
@@ -160,6 +185,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       limit: limit === 0 ? "none" : limit,
       remaining: remaining,
       indexEntries: indexTotal,
+      indexedFromGpx: indexedFromGpx,
     }),
     {
       headers: { "Content-Type": "application/json" },

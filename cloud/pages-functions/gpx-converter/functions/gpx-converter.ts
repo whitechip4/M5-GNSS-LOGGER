@@ -5,6 +5,7 @@ import {
   parseConversionDays,
   processCSVFile,
 } from "../shared/gnss-utils";
+import { loadTrackIndex, mergeTrackIndex, type TrackIndexEntry } from "../shared/track-index";
 
 /** force時に1リクエストで変換するファイル数の既定値（CPU時間制限対策） */
 const DEFAULT_FORCE_LIMIT = 5;
@@ -115,6 +116,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   let processed = 0;
   let skipped = 0;
   let remaining = 0;
+  const indexEntries: TrackIndexEntry[] = [];
+  // force時は索引を先に読み、索引に無いGPXも再生成対象にする
+  let indexedGpxKeys: Set<string> | undefined;
+  if (force) {
+    const index = await loadTrackIndex(env.BUCKET);
+    indexedGpxKeys = new Set(Object.keys(index.entries));
+  }
 
   for (const object of allObjects) {
     if (limit > 0 && processed >= limit) {
@@ -124,12 +132,21 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       }
       continue;
     }
-    const result = await processCSVFile(object.key, env, force);
+    const result = await processCSVFile(object.key, env, force, indexedGpxKeys);
     if (result) {
       processed++;
+      indexEntries.push(result);
     } else {
       skipped++;
     }
+  }
+
+  // ビューア用の索引（始点の国・開始時刻・距離など）を更新
+  let indexTotal = 0;
+  try {
+    indexTotal = await mergeTrackIndex(env.BUCKET, indexEntries);
+  } catch (error) {
+    console.error("Failed to update track index:", error);
   }
 
   return new Response(
@@ -142,6 +159,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       force: force,
       limit: limit === 0 ? "none" : limit,
       remaining: remaining,
+      indexEntries: indexTotal,
     }),
     {
       headers: { "Content-Type": "application/json" },

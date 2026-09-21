@@ -2,6 +2,7 @@
 // Used by Pages Functions and potentially by Workers
 
 import { cleanTrack, type TrackPoint, toEpochSec } from "./track-cleaner";
+import { buildIndexEntry, type TrackIndexEntry } from "./track-index";
 
 export interface Env {
   BUCKET: R2Bucket;
@@ -37,7 +38,7 @@ const DEFAULT_AUTHOR_NAME = "M5-GNSS-LOGGER";
  * force再生成時に同じバージョンで生成済みのGPXはスキップする（CPU時間の節約）。
  * track-cleaner.ts や generateGPX の出力を変えたら上げる。
  */
-export const GPX_GENERATOR_VERSION = "3";
+export const GPX_GENERATOR_VERSION = "4";
 /**
  * 記録がこの秒数以上途切れていたら<trkseg>を分ける。
  * 分けないとビューアが途切れ区間を1本の直線で結び、数kmの「飛び」に見える
@@ -49,20 +50,26 @@ const MAX_GPX_FILE_SIZE = 4 * 1024 * 1024; // 4MB (Google My Maps limit is 5MB)
 /**
  * Process a single CSV file and convert to GPX
  * @param force true の場合は既存GPXがあっても再生成する（クリーナー更新後の再変換用）
+ * @returns 変換した場合は索引エントリ、スキップ/失敗は null
  */
-export async function processCSVFile(key: string, env: Env, force = false): Promise<boolean> {
+export async function processCSVFile(
+  key: string,
+  env: Env,
+  force = false,
+  indexedGpxKeys?: Set<string>
+): Promise<TrackIndexEntry | null> {
   console.log("Processing object:", key);
 
   // Only process CSV files in gnss-data/ directory
   if (!key.startsWith("gnss-data/") || !key.endsWith(".csv")) {
     console.log("Skipping non-csv file or wrong directory:", key);
-    return false;
+    return null;
   }
 
   // Skip already processed GPX files
   if (key.includes("/gpx/")) {
     console.log("Skipping GPX file:", key);
-    return false;
+    return null;
   }
 
   // Check if GPX already exists
@@ -71,11 +78,14 @@ export async function processCSVFile(key: string, env: Env, force = false): Prom
   if (existingGpx) {
     if (!force) {
       console.log("GPX already exists, skipping:", gpxPath);
-      return false;
+      return null;
     }
-    if (existingGpx.customMetadata?.generatorVersion === GPX_GENERATOR_VERSION) {
+    // 同じバージョンで生成済みでも、索引に載っていなければ再生成して索引を埋める
+    // （CPU時間超過でGPXだけ書けて索引更新が走らなかったケースの回復用）
+    const indexed = indexedGpxKeys === undefined || indexedGpxKeys.has(gpxPath);
+    if (existingGpx.customMetadata?.generatorVersion === GPX_GENERATOR_VERSION && indexed) {
       console.log("GPX already generated with current version, skipping:", gpxPath);
-      return false;
+      return null;
     }
   }
 
@@ -84,7 +94,7 @@ export async function processCSVFile(key: string, env: Env, force = false): Prom
     const object = await env.BUCKET.get(key);
     if (!object) {
       console.error("Object not found:", key);
-      return false;
+      return null;
     }
 
     // Read CSV content
@@ -121,15 +131,15 @@ export async function processCSVFile(key: string, env: Env, force = false): Prom
 
     if (points.length === 0) {
       console.log("No valid points after cleaning:", key);
-      return false;
+      return null;
     }
 
     // Convert and upload GPX (may split into multiple files if too large)
     await convertCSVToGPXAndUpload(points, gpxPath, env.BUCKET, key, timezoneOffset, stats);
-    return true;
+    return buildIndexEntry(points, key, gpxPath, timezoneOffset, stats, GPX_GENERATOR_VERSION);
   } catch (error) {
     console.error("Error processing object:", key, error);
-    return false;
+    return null;
   }
 }
 

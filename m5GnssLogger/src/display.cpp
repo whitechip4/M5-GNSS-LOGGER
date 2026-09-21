@@ -1,4 +1,5 @@
 #include "display.h"
+#include "version.h"
 
 DisplayModule::DisplayModule()
     : _lcd()
@@ -172,6 +173,7 @@ void DisplayModule::_showDetailMode(const GNSS_DATA& data,
                  data.minute,
                  data.second);
   _sprite.printf("BAT: %.2f\n", batteryVoltage);
+  _sprite.printf("FW: %s\n", FIRMWARE_VERSION_FULL);
 }
 
 void DisplayModule::_showSimpleMode(const GNSS_DATA& data) {

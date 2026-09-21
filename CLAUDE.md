@@ -122,6 +122,8 @@ npm run format
 
 **環境設定**: `include/.env.h`ファイルから設定を読み込みます（gitignore対象）。テンプレートは[`.env.example.h`](m5GnssLogger/include/env.example.h)を参照。
 
+**バージョン情報**: [`include/version.h`](m5GnssLogger/include/version.h) の `FIRMWARE_VERSION` をリリース時に手動で上げる。git リビジョンとビルド日は [`tools/version.py`](m5GnssLogger/tools/version.py)（PlatformIO の extra_scripts）がビルド時に注入し、起動ログ・詳細表示・R2 アップロードの `x-amz-meta-firmware` に `1.1.0+d7160f2` の形式で出る。未コミット変更ありでビルドすると `-dirty` が付くので、実機に焼く前にコミットすること。
+
 ### Cloudflare Scheduler Worker ([cloud/workers/gpx-converter-scheduler/src/scheduler.ts](cloud/workers/gpx-converter-scheduler/src/scheduler.ts))
 
 - **トリガー方式**:

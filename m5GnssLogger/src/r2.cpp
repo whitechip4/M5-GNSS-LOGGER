@@ -1,4 +1,5 @@
 #include "r2.h"
+#include "version.h"
 #include "display.h"
 #include "util.h"
 #include <WiFiClientSecure.h>
@@ -183,6 +184,7 @@ bool R2Module::_uploadStreamData(Stream& stream,
   http.addHeader("Content-Type", "text/csv");
   http.addHeader("x-amz-content-sha256", payloadHash);
   http.addHeader("x-amz-date", timestamp);
+  http.addHeader("x-amz-meta-firmware", FIRMWARE_VERSION_FULL);
   http.addHeader("x-amz-meta-timezone", timezoneHeader);
   http.addHeader("Authorization", authHeader);
 
@@ -267,6 +269,7 @@ bool R2Module::uploadData(const char* data,
   http.addHeader("Content-Type", "text/csv");
   http.addHeader("x-amz-content-sha256", payloadHash);
   http.addHeader("x-amz-date", timestamp);
+  http.addHeader("x-amz-meta-firmware", FIRMWARE_VERSION_FULL);
   http.addHeader("x-amz-meta-timezone", timezoneHeader);
   http.addHeader("Authorization", authHeader);
 
@@ -311,6 +314,10 @@ String R2Module::_generateSignature(const char* method,
                             "x-amz-content-sha256:" + String(payloadHash) + "\n" +
                             "x-amz-date:" + String(timestamp) + "\n";
   String signedHeaders = "host;x-amz-content-sha256;x-amz-date";
+
+  // Firmware metadata header (always sent; sorted before x-amz-meta-timezone)
+  canonicalHeaders += "x-amz-meta-firmware:" + String(FIRMWARE_VERSION_FULL) + "\n";
+  signedHeaders += ";x-amz-meta-firmware";
 
   // Add timezone metadata header if provided
   if (timezoneHeader != nullptr && strlen(timezoneHeader) > 0) {

@@ -4,6 +4,7 @@
 #include <time.h>
 
 #include "config.h"
+#include "version.h"
 #include "gnss.h"
 #include "display.h"
 #include "storage.h"
@@ -135,6 +136,13 @@ void setup() {
   }
 
   displayModule.logMessage("Initializing...");
+
+  // ファームウェアバージョン表示（どのビルドが焼かれているか実機で確認できるように）
+  char versionStr[BUFFER_TIME_STR];
+  snprintf(
+      versionStr, sizeof(versionStr), "FW %s (%s)", FIRMWARE_VERSION_FULL, FIRMWARE_BUILD_DATE);
+  displayModule.logMessage(versionStr);
+  debug_print("MAIN", "Firmware %s built %s", FIRMWARE_VERSION_FULL, FIRMWARE_BUILD_DATE);
 
   // タイムゾーン表示
   char timezoneStr[BUFFER_TIME_STR];

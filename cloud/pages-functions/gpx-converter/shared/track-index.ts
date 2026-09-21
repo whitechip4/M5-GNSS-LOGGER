@@ -42,6 +42,9 @@ export interface TrackIndexEntry {
    * （位置飛び除去は掛かっていない。timezoneOffset は不明なので 0）
    */
   source?: "csv" | "gpx";
+  /** 4MB上限で分割された場合のパート番号（0始まり）と総パート数 */
+  part?: number;
+  parts?: number;
 }
 
 export interface TrackIndex {
@@ -62,7 +65,8 @@ export function buildIndexEntry(
   gpxKey: string,
   timezoneOffset: number,
   stats: CleanStats,
-  generatorVersion: string
+  generatorVersion: string,
+  split?: { part: number; parts: number }
 ): TrackIndexEntry {
   const first = points[0];
   const last = points[points.length - 1];
@@ -90,6 +94,7 @@ export function buildIndexEntry(
     generatorVersion,
     generatedAt: new Date().toISOString(),
     source: "csv",
+    ...(split && split.parts > 1 ? { part: split.part, parts: split.parts } : {}),
   };
 }
 

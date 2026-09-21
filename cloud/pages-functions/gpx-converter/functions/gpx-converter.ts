@@ -1,6 +1,7 @@
 import type { PagesFunction } from "@cloudflare/workers-types";
 import {
   type Env,
+  GPX_GENERATOR_VERSION,
   generateDateRange,
   parseConversionDays,
   processCSVFile,
@@ -124,8 +125,14 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const indexEntries: TrackIndexEntry[] = [];
   // 索引を先に読む。force時は索引に無いGPXも再生成対象にし、
   // CSVの無いGPX（手動アップロード分）は本文から索引を後追い生成する
+  // 「索引済み」は現行バージョンで登録されたものだけを指す
+  // （CPU時間超過でGPXだけ更新され索引が古い版のまま残ったケースも再生成対象にする）
   const index = await loadTrackIndex(env.BUCKET);
-  const indexedGpxKeys = new Set(Object.keys(index.entries));
+  const indexedGpxKeys = new Set(
+    Object.values(index.entries)
+      .filter((e) => e.source === "gpx" || e.generatorVersion === GPX_GENERATOR_VERSION)
+      .map((e) => e.gpxKey)
+  );
 
   for (const object of allObjects) {
     if (limit > 0 && processed >= limit) {
@@ -136,9 +143,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       continue;
     }
     const result = await processCSVFile(object.key, env, force, indexedGpxKeys);
-    if (result) {
+    if (result.length > 0) {
       processed++;
-      indexEntries.push(result);
+      indexEntries.push(...result);
     } else {
       skipped++;
     }

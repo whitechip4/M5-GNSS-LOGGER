@@ -38,7 +38,7 @@ const DEFAULT_AUTHOR_NAME = "M5-GNSS-LOGGER";
  * force再生成時に同じバージョンで生成済みのGPXはスキップする（CPU時間の節約）。
  * track-cleaner.ts や generateGPX の出力を変えたら上げる。
  */
-export const GPX_GENERATOR_VERSION = "4";
+export const GPX_GENERATOR_VERSION = "5";
 /**
  * 記録がこの秒数以上途切れていたら<trkseg>を分ける。
  * 分けないとビューアが途切れ区間を1本の直線で結び、数kmの「飛び」に見える
@@ -50,26 +50,26 @@ const MAX_GPX_FILE_SIZE = 4 * 1024 * 1024; // 4MB (Google My Maps limit is 5MB)
 /**
  * Process a single CSV file and convert to GPX
  * @param force true の場合は既存GPXがあっても再生成する（クリーナー更新後の再変換用）
- * @returns 変換した場合は索引エントリ、スキップ/失敗は null
+ * @returns 変換した場合は出力した各GPX（分割パート毎）の索引エントリ、スキップ/失敗は空配列
  */
 export async function processCSVFile(
   key: string,
   env: Env,
   force = false,
   indexedGpxKeys?: Set<string>
-): Promise<TrackIndexEntry | null> {
+): Promise<TrackIndexEntry[]> {
   console.log("Processing object:", key);
 
   // Only process CSV files in gnss-data/ directory
   if (!key.startsWith("gnss-data/") || !key.endsWith(".csv")) {
     console.log("Skipping non-csv file or wrong directory:", key);
-    return null;
+    return [];
   }
 
   // Skip already processed GPX files
   if (key.includes("/gpx/")) {
     console.log("Skipping GPX file:", key);
-    return null;
+    return [];
   }
 
   // Check if GPX already exists
@@ -78,14 +78,14 @@ export async function processCSVFile(
   if (existingGpx) {
     if (!force) {
       console.log("GPX already exists, skipping:", gpxPath);
-      return null;
+      return [];
     }
     // 同じバージョンで生成済みでも、索引に載っていなければ再生成して索引を埋める
     // （CPU時間超過でGPXだけ書けて索引更新が走らなかったケースの回復用）
     const indexed = indexedGpxKeys === undefined || indexedGpxKeys.has(gpxPath);
     if (existingGpx.customMetadata?.generatorVersion === GPX_GENERATOR_VERSION && indexed) {
       console.log("GPX already generated with current version, skipping:", gpxPath);
-      return null;
+      return [];
     }
   }
 
@@ -94,7 +94,7 @@ export async function processCSVFile(
     const object = await env.BUCKET.get(key);
     if (!object) {
       console.error("Object not found:", key);
-      return null;
+      return [];
     }
 
     // Read CSV content
@@ -131,21 +131,41 @@ export async function processCSVFile(
 
     if (points.length === 0) {
       console.log("No valid points after cleaning:", key);
-      return null;
+      return [];
     }
 
     // Convert and upload GPX (may split into multiple files if too large)
-    await convertCSVToGPXAndUpload(points, gpxPath, env.BUCKET, key, timezoneOffset, stats);
-    return buildIndexEntry(points, key, gpxPath, timezoneOffset, stats, GPX_GENERATOR_VERSION);
+    const outputs = await convertCSVToGPXAndUpload(
+      points,
+      gpxPath,
+      env.BUCKET,
+      key,
+      timezoneOffset,
+      stats
+    );
+    // 分割された場合は各パートを個別に索引化する（点数・距離・時刻はパート毎の値）
+    return outputs.map((out, i) =>
+      buildIndexEntry(out.points, key, out.path, timezoneOffset, stats, GPX_GENERATOR_VERSION, {
+        part: i,
+        parts: outputs.length,
+      })
+    );
   } catch (error) {
     console.error("Error processing object:", key, error);
-    return null;
+    return [];
   }
+}
+
+/** アップロードしたGPX1ファイル分の出力情報 */
+export interface GPXOutput {
+  path: string;
+  points: GNSSPoint[];
 }
 
 /**
  * Convert CSV points to GPX format and upload to R2
  * Handles file size limitation and splitting
+ * @returns 出力したGPX（分割時は複数）とそれぞれに含めた点
  */
 export async function convertCSVToGPXAndUpload(
   points: GNSSPoint[],
@@ -154,11 +174,15 @@ export async function convertCSVToGPXAndUpload(
   sourceFileName: string,
   timezoneOffset: number,
   stats?: CleanStats
-): Promise<void> {
+): Promise<GPXOutput[]> {
+  const outputs: GPXOutput[] = [];
   const encoder = new TextEncoder();
   // 各点のXML断片のバイト数を1回だけ計算し、上限内に収まる点数を貪欲に決める
   // （以前は二分探索で毎回GPX全体を再生成しており、4MB超のファイルでCPU時間制限に達していた）
-  const pointSizes = points.map((p) => encoder.encode(formatTrackPoint(p, timezoneOffset)).length);
+  // 各点のXML断片のバイト数（結合時の改行1バイトを含む）
+  const pointSizes = points.map(
+    (p) => encoder.encode(formatTrackPoint(p, timezoneOffset)).length + 1
+  );
   // ヘッダ/フッタのサイズは点数に依存しないので、空に近いGPXから見積もる（余裕を持たせる）
   const envelopeSize =
     encoder.encode(generateGPX(points.slice(0, 1), 0, sourceFileName, 99, timezoneOffset, stats))
@@ -191,6 +215,7 @@ export async function convertCSVToGPXAndUpload(
       stats
     );
     await uploadGPXToR2(bucket, outputPath, gpxContent);
+    outputs.push({ path: outputPath, points: segmentPoints });
 
     if (isSingleFile) {
       break;
@@ -198,6 +223,7 @@ export async function convertCSVToGPXAndUpload(
     currentStartIndex = endIndex;
     fileNumber++;
   }
+  return outputs;
 }
 
 /**

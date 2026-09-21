@@ -136,9 +136,11 @@ npm run format
 - **R2バインディング**: `BUCKET` 経由でR2バケットにアクセス
 - **機能**:
   - `gnss-data/YYYYMMDD/` ディレクトリをスキャン
-  - CSVファイルをGPX 1.1形式に変換
+  - 位置飛び（マルチパス発散・屋内ドリフト）の除去と異常標高の補正（[shared/track-cleaner.ts](cloud/pages-functions/gpx-converter/shared/track-cleaner.ts)）
+  - CSVファイルをGPX 1.1形式に変換（`<trk><desc>` に入力点数・除去点数・標高補正点数を記録）
   - 4MB超のファイルは自動分割（Google My Maps対応）
-  - 出力先: `gnss-data/YYYYMMDD/gpx/filename.gpx`
+  - 出力先: `gnss-data/YYYYMMDD/gpx/filename.gpx`（YYYYMMDD はCSVが置かれているディレクトリの日付。ファイル名の日付ではない）
+- **クエリパラメータ**: `?force=1` で既存GPXを再生成、`?days=N` で `CONVERSION_DAYS` を一時上書き（0=全期間）、`?date=YYYYMMDD` で1日分だけ、`?limit=N` で1リクエストの変換数を制限（force時は既定5。全件を1回で回すとCPU時間超過でエラー1102になる。応答の `remaining` が0になるまで繰り返す）
 - **共通処理**: [shared/gnss-utils.ts](cloud/pages-functions/gpx-converter/shared/gnss-utils.ts) に変換ロジックを記述
 
 **バインディング**: R2バケットは `BUCKET` として [wrangler.toml](cloud/pages-functions/gpx-converter/wrangler.toml:6) でバインドされます。
@@ -162,11 +164,12 @@ npm run format
 ## CSVデータフォーマット
 
 ### 処理済みデータ（通常CSV）
-品質しきい値を満たしたフィルタリング済みGNSSデータ（HDOP < 6.0、衛星数 ≥ 5、位置変化 > 0.001°）
+品質しきい値を満たしたフィルタリング済みGNSSデータ（HDOP < 6.0、衛星数 ≥ 5、hAcc ≤ 20m、速度 ≤ 200km/h、直前有効点からの到達可能性チェック）
 ```
-date,time,lat,lng,alt,spd,siv,hdop
-2024-01-01,12:00:00,35.6895000,139.6917000,50.0,0.0,12,1.2
+date,time,lat,lng,alt,spd,siv,hdop,hacc,vacc
+2024/01/01,12:00:00,35.6895000,139.6917000,50.0,0.0,12,1.2,3.5,5.1
 ```
+旧ファームウェアのファイルは `hacc,vacc` 列が無い8列。GPX変換側は列数の違いを吸収する。
 
 ### 生データ（Raw CSV）
 フィルタリング前の全GNSSメッセージ
@@ -199,4 +202,7 @@ curl -X POST https://gpx-converter-scheduler.<account>.workers.dev/trigger
 
 # Pages Functionsを直接トリガー
 curl -X POST https://gpx-converter.<account>.pages.dev/gpx-converter
+
+# クリーナー変更後に全期間のGPXを再生成（既存GPXを上書き。1回5ファイルずつ、remainingが0になるまで繰り返す）
+while curl -s -X POST "https://gpx-converter.<account>.pages.dev/gpx-converter?force=1&days=0&limit=5" | tee /dev/stderr | grep -qv '"remaining":0'; do :; done
 ```

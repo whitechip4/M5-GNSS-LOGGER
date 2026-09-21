@@ -6,6 +6,14 @@ import {
   processCSVFile,
 } from "../shared/gnss-utils";
 
+/** force時に1リクエストで変換するファイル数の既定値（CPU時間制限対策） */
+const DEFAULT_FORCE_LIMIT = 5;
+
+/** CSVかつgpx/配下でないキーか（変換対象の粗い判定。GPX有無は見ない） */
+function isConversionTarget(key: string): boolean {
+  return key.startsWith("gnss-data/") && key.endsWith(".csv") && !key.includes("/gpx/");
+}
+
 /**
  * List all objects in R2 bucket with continuation token support
  * R2's list() method returns max 1000 objects per call, so we need to paginate
@@ -66,12 +74,32 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   console.log("Pages Function triggered:", request.method, request.url);
 
-  // 環境変数から処理対象日数を取得
-  const conversionDays = parseConversionDays(env.CONVERSION_DAYS);
+  // クエリパラメータ:
+  //   force=1        既存GPXを上書きして再生成（クリーナー更新後の一括再変換用）
+  //   days=N         環境変数CONVERSION_DAYSを一時的に上書き（0=全期間）
+  //   date=YYYYMMDD  その日付ディレクトリだけ処理（daysより優先）
+  //   limit=N        1リクエストで変換する最大ファイル数（CPU時間制限=エラー1102対策。
+  //                  force時のデフォルト5、通常時は無制限）。応答の remaining が0になるまで繰り返し呼ぶ
+  const url = new URL(request.url);
+  const force = url.searchParams.get("force") === "1" || url.searchParams.get("force") === "true";
+  const daysParam = url.searchParams.get("days");
+  const dateParam = url.searchParams.get("date");
+  const limitParam = url.searchParams.get("limit");
+  const conversionDays = parseConversionDays(daysParam ?? env.CONVERSION_DAYS);
+  let limit = limitParam !== null ? parseInt(limitParam, 10) : force ? DEFAULT_FORCE_LIMIT : 0;
+  if (Number.isNaN(limit) || limit < 0) {
+    limit = 0;
+  }
+  if (force) {
+    console.log("Force mode: existing GPX files will be regenerated");
+  }
 
   let allObjects: R2Object[];
 
-  if (conversionDays === 0) {
+  if (dateParam && /^\d{8}$/.test(dateParam)) {
+    console.log(`Processing single date: ${dateParam}`);
+    allObjects = await listObjectsByDateRange(env.BUCKET, [dateParam]);
+  } else if (conversionDays === 0) {
     // 後方互換性: 環境変数未設定時は全データ処理
     console.log("CONVERSION_DAYS not set or set to 0, processing all data");
     allObjects = await listAllObjects(env.BUCKET, "gnss-data/");
@@ -86,9 +114,17 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   let processed = 0;
   let skipped = 0;
+  let remaining = 0;
 
   for (const object of allObjects) {
-    const result = await processCSVFile(object.key, env);
+    if (limit > 0 && processed >= limit) {
+      // 変換対象（GPXなし、またはforce）だけを残件として数える
+      if (isConversionTarget(object.key)) {
+        remaining++;
+      }
+      continue;
+    }
+    const result = await processCSVFile(object.key, env, force);
     if (result) {
       processed++;
     } else {
@@ -102,7 +138,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       processed: processed,
       skipped: skipped,
       total: allObjects.length,
-      conversionDays: conversionDays === 0 ? "all" : conversionDays,
+      conversionDays: dateParam ?? (conversionDays === 0 ? "all" : conversionDays),
+      force: force,
+      limit: limit === 0 ? "none" : limit,
+      remaining: remaining,
     }),
     {
       headers: { "Content-Type": "application/json" },

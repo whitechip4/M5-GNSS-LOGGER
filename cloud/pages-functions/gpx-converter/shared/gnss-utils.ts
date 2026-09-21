@@ -1,12 +1,14 @@
 // Shared utilities for GNSS/GPX processing
 // Used by Pages Functions and potentially by Workers
 
+import { cleanTrack, type TrackPoint, toEpochSec } from "./track-cleaner";
+
 export interface Env {
   BUCKET: R2Bucket;
   CONVERSION_DAYS?: string;
 }
 
-export interface GNSSPoint {
+export interface GNSSPoint extends TrackPoint {
   date: string;
   time: string;
   lat: number;
@@ -15,17 +17,40 @@ export interface GNSSPoint {
   spd: number;
   siv: number;
   hdop: number;
+  /** u-blox hAcc [m]（新しいファームウェアのCSVのみ） */
+  hacc?: number;
+  /** 位置飛び補正後の標高 [m]（cleanTrack が設定） */
+  ele?: number;
+}
+
+/** GPXの<desc>に埋め込むクリーニング統計 */
+export interface CleanStats {
+  input: number;
+  dropped: number;
+  altitudeCorrected: number;
 }
 
 // Configuration constants
 const DEFAULT_AUTHOR_NAME = "M5-GNSS-LOGGER";
+/**
+ * クリーナー/生成ロジックのバージョン。GPXのcustomMetadataに記録し、
+ * force再生成時に同じバージョンで生成済みのGPXはスキップする（CPU時間の節約）。
+ * track-cleaner.ts や generateGPX の出力を変えたら上げる。
+ */
+export const GPX_GENERATOR_VERSION = "3";
+/**
+ * 記録がこの秒数以上途切れていたら<trkseg>を分ける。
+ * 分けないとビューアが途切れ区間を1本の直線で結び、数kmの「飛び」に見える
+ */
+const SEGMENT_GAP_SEC = 300;
 const DEFAULT_TITLE = "GNSS Data";
 const MAX_GPX_FILE_SIZE = 4 * 1024 * 1024; // 4MB (Google My Maps limit is 5MB)
 
 /**
  * Process a single CSV file and convert to GPX
+ * @param force true の場合は既存GPXがあっても再生成する（クリーナー更新後の再変換用）
  */
-export async function processCSVFile(key: string, env: Env): Promise<boolean> {
+export async function processCSVFile(key: string, env: Env, force = false): Promise<boolean> {
   console.log("Processing object:", key);
 
   // Only process CSV files in gnss-data/ directory
@@ -42,10 +67,16 @@ export async function processCSVFile(key: string, env: Env): Promise<boolean> {
 
   // Check if GPX already exists
   const gpxPath = generateGPXPath(key);
-  const existingGpx = await env.BUCKET.get(gpxPath);
+  const existingGpx = await env.BUCKET.head(gpxPath);
   if (existingGpx) {
-    console.log("GPX already exists, skipping:", gpxPath);
-    return false;
+    if (!force) {
+      console.log("GPX already exists, skipping:", gpxPath);
+      return false;
+    }
+    if (existingGpx.customMetadata?.generatorVersion === GPX_GENERATOR_VERSION) {
+      console.log("GPX already generated with current version, skipping:", gpxPath);
+      return false;
+    }
   }
 
   try {
@@ -73,14 +104,28 @@ export async function processCSVFile(key: string, env: Env): Promise<boolean> {
     );
 
     // Parse CSV
-    const points = parseCSV(csvText);
+    const rawPoints = parseCSV(csvText);
+
+    // 位置飛び（マルチパス発散・屋内ドリフト）を除去し、異常標高を補正
+    const cleaned = cleanTrack(rawPoints);
+    const stats: CleanStats = {
+      input: rawPoints.length,
+      dropped: cleaned.dropped,
+      altitudeCorrected: cleaned.altitudeCorrected,
+    };
+    console.log(
+      `Cleaned track: ${stats.input} -> ${cleaned.points.length} points ` +
+        `(dropped ${stats.dropped}, altitude corrected ${stats.altitudeCorrected})`
+    );
+    const points = cleaned.points;
 
     if (points.length === 0) {
+      console.log("No valid points after cleaning:", key);
       return false;
     }
 
     // Convert and upload GPX (may split into multiple files if too large)
-    await convertCSVToGPXAndUpload(points, gpxPath, env.BUCKET, key, timezoneOffset);
+    await convertCSVToGPXAndUpload(points, gpxPath, env.BUCKET, key, timezoneOffset, stats);
     return true;
   } catch (error) {
     console.error("Error processing object:", key, error);
@@ -97,55 +142,51 @@ export async function convertCSVToGPXAndUpload(
   basePath: string,
   bucket: R2Bucket,
   sourceFileName: string,
-  timezoneOffset: number
+  timezoneOffset: number,
+  stats?: CleanStats
 ): Promise<void> {
+  const encoder = new TextEncoder();
+  // 各点のXML断片のバイト数を1回だけ計算し、上限内に収まる点数を貪欲に決める
+  // （以前は二分探索で毎回GPX全体を再生成しており、4MB超のファイルでCPU時間制限に達していた）
+  const pointSizes = points.map((p) => encoder.encode(formatTrackPoint(p, timezoneOffset)).length);
+  // ヘッダ/フッタのサイズは点数に依存しないので、空に近いGPXから見積もる（余裕を持たせる）
+  const envelopeSize =
+    encoder.encode(generateGPX(points.slice(0, 1), 0, sourceFileName, 99, timezoneOffset, stats))
+      .length + 256;
+
   let fileNumber = 0;
   let currentStartIndex = 0;
 
   while (currentStartIndex < points.length) {
+    let endIndex = currentStartIndex;
+    let size = envelopeSize;
+    while (endIndex < points.length && size + pointSizes[endIndex] <= MAX_GPX_FILE_SIZE) {
+      size += pointSizes[endIndex];
+      endIndex++;
+    }
+    if (endIndex === currentStartIndex) {
+      // 1点も入らないことは実際には起きないが、無限ループ防止
+      endIndex = currentStartIndex + 1;
+    }
+
+    const isSingleFile = fileNumber === 0 && endIndex === points.length;
     const outputPath = fileNumber === 0 ? basePath : getSplitFilePath(basePath, fileNumber);
+    const segmentPoints = points.slice(currentStartIndex, endIndex);
     const gpxContent = generateGPX(
-      points,
-      currentStartIndex,
+      segmentPoints,
+      0,
       sourceFileName,
       fileNumber,
-      timezoneOffset
+      timezoneOffset,
+      stats
     );
+    await uploadGPXToR2(bucket, outputPath, gpxContent);
 
-    // Check file size and split if needed
-    const fileSize = new Blob([gpxContent]).size;
-
-    if (fileSize > MAX_GPX_FILE_SIZE) {
-      // Binary search to find how many points fit
-      let low = currentStartIndex + 1;
-      let high = points.length;
-
-      while (low < high) {
-        const mid = Math.floor((low + high) / 2);
-        const testSegment = points.slice(currentStartIndex, mid);
-        const testGPX = generateGPX(testSegment, 0, sourceFileName, fileNumber, timezoneOffset);
-        const testSize = new Blob([testGPX]).size;
-
-        if (testSize > MAX_GPX_FILE_SIZE) {
-          high = mid;
-        } else {
-          low = mid + 1;
-        }
-      }
-
-      // Upload the segment that fits (low - 1 is the largest valid index)
-      const segmentPoints = points.slice(currentStartIndex, low - 1);
-      const segmentGPX = generateGPX(segmentPoints, 0, sourceFileName, fileNumber, timezoneOffset);
-      await uploadGPXToR2(bucket, outputPath, segmentGPX);
-
-      // Move to next segment
-      currentStartIndex = low - 1;
-      fileNumber++;
-    } else {
-      // Upload complete file
-      await uploadGPXToR2(bucket, outputPath, gpxContent);
+    if (isSingleFile) {
       break;
     }
+    currentStartIndex = endIndex;
+    fileNumber++;
   }
 }
 
@@ -156,6 +197,9 @@ async function uploadGPXToR2(bucket: R2Bucket, path: string, gpxContent: string)
   await bucket.put(path, gpxContent, {
     httpMetadata: {
       contentType: "application/gpx+xml",
+    },
+    customMetadata: {
+      generatorVersion: GPX_GENERATOR_VERSION,
     },
   });
   console.log(`✅ Uploaded GPX: ${path}`);
@@ -177,7 +221,8 @@ export function generateGPX(
   startIndex: number,
   sourceFileName: string,
   fileNumber: number,
-  timezoneOffset: number
+  timezoneOffset: number,
+  stats?: CleanStats
 ): string {
   if (points.length === 0) {
     throw new Error("No points to convert");
@@ -202,16 +247,28 @@ export function generateGPX(
   // Format start time for metadata
   const startTime = formatDateTimeForGPX(firstPoint.date, firstPoint.time, timezoneOffset);
 
-  // Generate track points
-  const trackPoints = points
-    .map(
-      (p) =>
-        `      <trkpt lat="${p.lat.toFixed(7)}" lon="${p.lng.toFixed(7)}">
-        <ele>${p.alt.toFixed(1)}</ele>
-        <time>${formatDateTimeForGPX(p.date, p.time, timezoneOffset)}</time>
-      </trkpt>`
-    )
-    .join("\n");
+  // Generate track points. 記録の途切れ（SEGMENT_GAP_SEC以上）で<trkseg>を分割する
+  const segments: string[] = [];
+  let current: string[] = [];
+  let prevEpoch: number | undefined;
+  for (const p of points) {
+    const epoch = toEpochSec(p.date, p.time);
+    if (prevEpoch !== undefined && epoch - prevEpoch >= SEGMENT_GAP_SEC && current.length > 0) {
+      segments.push(current.join("\n"));
+      current = [];
+    }
+    current.push(formatTrackPoint(p, timezoneOffset));
+    prevEpoch = epoch;
+  }
+  if (current.length > 0) {
+    segments.push(current.join("\n"));
+  }
+  const trackSegments = segments.map((seg) => `    <trkseg>\n${seg}\n    </trkseg>`).join("\n");
+
+  // クリーニング統計（後から「どれだけ捨てたか」を確認できるように残す）
+  const desc = stats
+    ? `\n    <desc>source=${sourceFileName} points=${stats.input} dropped=${stats.dropped} altitudeCorrected=${stats.altitudeCorrected}</desc>`
+    : "";
 
   // Build GPX XML
   const gpx = `<?xml version="1.0" encoding="utf-8"?>
@@ -221,14 +278,20 @@ export function generateGPX(
     <bounds minlat="${minLat.toFixed(7)}" maxlat="${maxLat.toFixed(7)}" minlon="${minLng.toFixed(7)}" maxlon="${maxLng.toFixed(7)}"/>
   </metadata>
   <trk>
-    <name>${DEFAULT_TITLE}${fileNumber > 0 ? ` (Part ${fileNumber + 1})` : ""}</name>
-    <trkseg>
-${trackPoints}
-    </trkseg>
+    <name>${DEFAULT_TITLE}${fileNumber > 0 ? ` (Part ${fileNumber + 1})` : ""}</name>${desc}
+${trackSegments}
   </trk>
 </gpx>`;
 
   return gpx;
+}
+
+/** 1点分の<trkpt>要素を生成 */
+function formatTrackPoint(p: GNSSPoint, timezoneOffset: number): string {
+  return `      <trkpt lat="${p.lat.toFixed(7)}" lon="${p.lng.toFixed(7)}">
+        <ele>${(p.ele ?? p.alt).toFixed(1)}</ele>
+        <time>${formatDateTimeForGPX(p.date, p.time, timezoneOffset)}</time>
+      </trkpt>`;
 }
 
 /**
@@ -282,7 +345,7 @@ export function parseCSV(csvText: string): GNSSPoint[] {
       continue;
     }
 
-    // CSV format: date,time,lat,lng,alt,spd,siv,hdop
+    // CSV format: date,time,lat,lng,alt,spd,siv,hdop[,hacc,vacc]
     // Example: 2024/01/01,12:00:00,35.6895,139.6917,50.0,5.5,8,1.2
     const lat = parseFloat(parts[2]);
     const lng = parseFloat(parts[3]);
@@ -303,6 +366,12 @@ export function parseCSV(csvText: string): GNSSPoint[] {
       siv: parseInt(parts[6]),
       hdop: parseFloat(parts[7]),
     };
+    if (parts.length >= 9) {
+      const hacc = parseFloat(parts[8]);
+      if (!isNaN(hacc)) {
+        point.hacc = hacc;
+      }
+    }
 
     points.push(point);
   }
@@ -315,8 +384,8 @@ export function parseCSV(csvText: string): GNSSPoint[] {
  * Generate GPX file path from CSV file path
  */
 export function generateGPXPath(csvPath: string): string {
-  // Input: gnss-data/20240101/gnss_csv_data_20240101_120000.csv
-  // Output: gnss-data/20240101/gpx/gnss_csv_data_20240101_120000.gpx
+  // Input: gnss-data/20240101/gnss_csv_data_20240102_120000.csv
+  // Output: gnss-data/20240101/gpx/gnss_csv_data_20240102_120000.gpx
 
   const parts = csvPath.split("/");
   const fileName = parts[parts.length - 1];
@@ -326,12 +395,14 @@ export function generateGPXPath(csvPath: string): string {
   // Or from path (gnss-data/YYYYMMDD/filename.csv)
   let dateStr: string;
 
+  // GPXはCSVと同じ日付ディレクトリの gpx/ 配下に置く。
+  // 旅行中は1つの日付フォルダに複数日のCSVが入ることがあり（例: 20251225/ に 1226, 1227 のCSV）、
+  // ファイル名の日付を使うとCSVと別フォルダにGPXができてビューアから辿れなくなる
   const dateMatch = fileName.match(/gnss_csv_data_(\d{8})_/);
-  if (dateMatch) {
-    dateStr = dateMatch[1];
-  } else if (parts.length >= 2 && parts[0] === "gnss-data") {
-    // Try to get date from directory
+  if (parts.length >= 2 && parts[0] === "gnss-data" && /^\d{8}$/.test(parts[1])) {
     dateStr = parts[1];
+  } else if (dateMatch) {
+    dateStr = dateMatch[1];
   } else {
     // Use current date
     dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");

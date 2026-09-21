@@ -24,9 +24,10 @@ if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
   exit 1
 fi
 
+# CLOUDFLARE_API_TOKEN が無ければ wrangler login (OAuth) の認証情報を使う
 if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-  echo "Error: CLOUDFLARE_API_TOKEN not set in .dev.vars"
-  exit 1
+  echo "CLOUDFLARE_API_TOKEN not set, using wrangler OAuth credentials (run 'npx wrangler login' first)"
+  unset CLOUDFLARE_API_TOKEN
 fi
 
 # Cleanup function to restore wrangler.toml on exit
@@ -47,8 +48,11 @@ cp wrangler.toml wrangler.toml.bak
 sed -i "s|\${R2_BUCKET_NAME}|${R2_BUCKET_NAME}|g" wrangler.toml
 sed -i "s|\${CRON_SECRET}|${CRON_SECRET}|g" wrangler.toml
 
-# Export API token for wrangler
-export CLOUDFLARE_API_TOKEN
+# Export API token for wrangler (only when set; empty value would override OAuth)
+if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
+  export CLOUDFLARE_API_TOKEN
+fi
+export CLOUDFLARE_ACCOUNT_ID
 
 # Deploy
 echo "Deploying to Cloudflare Pages Functions (Production)..."

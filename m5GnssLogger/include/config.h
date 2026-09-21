@@ -32,6 +32,9 @@ typedef struct {
   float hdop;
   float pdop;
 
+  float hacc;  // 水平精度推定 [m] (u-blox hAcc)
+  float vacc;  // 垂直精度推定 [m] (u-blox vAcc)
+
   bool isFixOk;
 
 } GNSS_DATA;
@@ -43,6 +46,26 @@ typedef struct {
 #define GNSS_MIN_SATELLITES 5
 #define GNSS_RECOVERY_BUFFER_MS 5000
 #define GNSS_POSITION_THRESHOLD 0.001f
+
+// マルチパス（半屋内等）による位置飛び対策の閾値
+// R2上の全34ファイル（2025-12〜2026-08）の実測解析に基づく。
+// 詳細は cloud/pages-functions/gpx-converter/shared/track-cleaner.ts も参照
+// hAccが閾値を超えた測位は受信機自身が信頼できないと推定しているため棄却する（ゆっくりドリフトの主対策）
+#define GNSS_HACC_THRESHOLD_M 20.0f
+// 想定最大移動速度。実測データで高速走行時に報告速度149km/hを確認しているため200とする
+#define GNSS_MAX_SPEED_KMH 200.0f
+// 水平ジャンプ判定の許容マージン（GNSSノイズ吸収用。10Hz評価なので小さくてよい）
+#define GNSS_JUMP_MARGIN_M 20.0f
+// 垂直方向の許容: |Δalt| <= マージン + 勾配 x 水平移動距離
+// （時間項なし。静止中の高度沈降を経過時間で正当化しないため）
+// 静止中の高度ノイズは屋外で±10m、半屋内で±60m程度。トンネル明け（水平4.2km/高度差570m=勾配0.14）は通す
+#define GNSS_VERTICAL_MARGIN_M 80.0f
+#define GNSS_MAX_GRADE 0.3f
+// 30秒以上前の有効点と比較した持続的な垂直速度の上限 [m/s]（山岳道路でも2〜3m/s、発散時は8〜14m/s）
+#define GNSS_MAX_VERTICAL_SPEED_MPS 5.0f
+#define GNSS_SLOW_ANCHOR_AGE_MS 30000
+// ジャンプ後の新しい位置を受け入れるまでに一貫した測位が継続すべき時間
+#define GNSS_JUMP_REACCEPT_MS 10000
 
 /**
  * @brief バッテリー設定
